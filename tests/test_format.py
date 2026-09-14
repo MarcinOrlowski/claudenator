@@ -17,11 +17,12 @@ import re
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from conclaude.core.format import Formatter
-from conclaude.core.model import Part, TrashEntry
+from conclaude.core.model import Part, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 
 NOW = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
@@ -43,7 +44,7 @@ def test_absolute_shows_local_time_to_the_second() -> None:
 
 def test_absolute_pattern_comes_from_the_settings() -> None:
     """Absolute pattern comes from the settings."""
-    settings = Settings(time_pattern="%Y-%m-%dT%H:%M:%S")
+    settings = Settings(time_format="absolute", time_pattern="%Y-%m-%dT%H:%M:%S")
 
     assert "T" in Formatter(settings, now=NOW).timestamp(NOW)
 
@@ -203,6 +204,60 @@ def test_a_cut_path_never_goes_past_its_room(width: int) -> None:
     else:
         assert len(cut) <= width
         assert path.endswith(cut[-1:])
+
+
+def test_fit_cuts_a_path_at_its_slashes_and_any_other_text_by_the_character() -> None:
+    """Fit cuts a text with a slash in it like a path, and any other like a title."""
+    fmt = Formatter(Settings())
+
+    assert fmt.fit("1.9M  /home/u/.claude/projects/-p/s.jsonl", 24) == (
+        "1.9M  /home/…/-p/s.jsonl"
+    )
+    assert fmt.fit("konfigurator-vs-api-round-2 [live]", 20) == "konf…-round-2 [live]"
+    assert fmt.fit("short", 20) == "short"
+
+
+def session(**overrides: Any) -> Session:
+    """A session in ``/c/projects/-home-u-p``, with a sidecar of three subagents."""
+    fields: dict[str, Any] = dict(
+        id="s",
+        project_key="-home-u-p",
+        project_path="/home/u/p",
+        project_source="transcript",
+        title="Hello",
+        title_source="custom",
+        transcript_path=Path("/c/projects/-home-u-p/s.jsonl"),
+        transcript_size=100,
+        last_used=NOW,
+        created=NOW,
+        sidecar_path=Path("/c/projects/-home-u-p/s"),
+        sidecar_size=2048,
+        subagent_count=3,
+        git_branch="dev",
+        version="2.1.270",
+        fork_parent=None,
+        damaged=False,
+    )
+    fields.update(overrides)
+    return Session(**fields)
+
+
+def test_describe_names_the_folder_once_and_the_files_in_it_by_their_name() -> None:
+    """Describe names the folder once, in full. The transcript and the sidecar go by name.
+
+    So no line carries the whole path twice, and none is longer than it must be.
+    """
+    fmt = Formatter(Settings(), now=NOW)
+    lines = dict(fmt.describe(SessionDetails(session(), 0)))
+    alone = session(sidecar_path=None, sidecar_size=0, subagent_count=0)
+    without = dict(fmt.describe(SessionDetails(alone, 0)))
+
+    assert lines["Folder"] == "/c/projects/-home-u-p"
+    assert lines["Transcript"] == "100B  s.jsonl"
+    assert lines["Sidecar"] == "2.0K  s  (3 subagent transcripts)"
+    assert lines["Total"] == "2.1K"
+    assert without["Sidecar"] == "none"
+    assert without["Total"] == "100B"
 
 
 def entry(size: int, parts: tuple[Part, ...] = ()) -> TrashEntry:

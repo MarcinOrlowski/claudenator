@@ -36,6 +36,7 @@ from conclaude.tui.panes import (
     EntriesPane,
     EntryPane,
     FilterBox,
+    Lines,
     ProjectsPane,
     SessionsPane,
 )
@@ -76,6 +77,16 @@ def three_sessions(fake: FakeClaude) -> tuple[str, str, str]:
         "/p/b", b1, session_records(b1, "/p/b", custom_title="B1"), mtime=1000
     )
     return a1, a2, b1
+
+
+def painted_lines(pane: Lines, lines: list[tuple[str, str]]) -> list[str]:
+    """The lines as the pane paints them: one column of labels, each value cut to fit."""
+    width = max(len(label) for label, _ in lines) + 1
+    room = pane.scrollable_content_region.width - width - 1
+    return [
+        f"{(label + ':').ljust(width)} {pane.fmt.fit(value, room)}"
+        for label, value in lines
+    ]
 
 
 async def test_three_panes_projects_left_sessions_upper_right_details_lower_right(
@@ -232,24 +243,26 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        text = app.query_one(DetailsPane).text
+        pane = app.query_one(DetailsPane)
+        text = pane.text
         static = app.query_one("#details-text", Static)
         painted = str(static.render())
+        expected = painted_lines(pane, fmt.describe(store.details(sid)))
 
     assert painted == text
-    for label, value in fmt.describe(store.details(sid)):
-        assert re.search(
-            rf"^{re.escape(label)}: +{re.escape(value)}$", text, re.M
-        ), label
+    assert text.splitlines() == expected
     assert f"Id:          {sid}" in text
     assert "Project:     /p/x  (from transcript)" in text
+    assert re.search(r"^Folder: +\S+/claude/projects/-p-x$", text, re.M)
     assert "Git branch:  dev" in text
     assert f"Created:     {fmt.timestamp(session.created)}" in text
     assert f"Last used:   {fmt.timestamp(session.last_used)}" in text
     assert "Claude Code: 2.1.270" in text
-    assert f"Transcript:  {fmt.size(session.transcript_size)}  " in text
-    assert f"Sidecar:     {fmt.size(session.sidecar_size)}  " in text
-    assert "(3 subagent transcripts)" in text
+    assert f"Transcript:  {fmt.size(session.transcript_size)}  {sid}.jsonl" in text
+    assert (
+        f"Sidecar:     {fmt.size(session.sidecar_size)}  {sid}  (3 subagent transcripts)"
+        in text
+    )
     assert f"Total:       {fmt.size(session.size)}" in text
     assert "Live:        yes  (pid 4242)" in text
     assert "Fork of:" not in text
@@ -1093,22 +1106,23 @@ async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
         pane = app.screen.query_one(EntryPane)
         first = pane.text
         painted = str(app.screen.query_one("#entry-text", Static).render())
+        expected = painted_lines(pane, fmt.describe_entry(entry))
         await pilot.press("down")
         await pilot.pause()
         second = pane.text
 
     assert painted == first
-    for label, value in fmt.describe_entry(entry):
-        assert re.search(
-            rf"^{re.escape(label)}: +{re.escape(value)}$", first, re.M
-        ), label
+    assert first.splitlines() == expected
     assert re.search(rf"^Session: +{sid}$", first, re.M)
     assert re.search(rf"^Trashed: +{re.escape(fmt.timestamp(later))}$", first, re.M)
     assert re.search(r"^Reason: +pressed d$", first, re.M)
     assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
-        where = re.escape(str(parts[kind]))
-        assert re.search(rf"^{kind.capitalize()}: +\S+  {where}$", first, re.M), kind
+        # A long path is cut in the middle, so the line always ends with the name.
+        # A name that fills the room on its own leaves no room for the size.
+        name = re.escape(parts[kind].name)
+        line = rf"^{kind.capitalize()}: +(\S+  )?\S*/{name}$"
+        assert re.search(line, first, re.M), kind
     assert re.search(rf"^Session: +{other}$", second, re.M)
     assert sid not in second
 
@@ -1643,6 +1657,44 @@ async def test_the_trash_table_cuts_a_long_title_in_the_middle_too(
     assert 0 < width < len(TALE)
     assert cell == fmt.title(entry.title, width)
     assert cell.endswith("part one") and settings.cut_mark in cell
+
+
+async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wraps(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A long line in the details pane is cut in the middle, at the slashes. It never wraps.
+
+    The end of a path stays, so the folder or the file name is always on view.
+    A wider window brings the whole line back.
+    """
+    sid = new_id()
+    fake.transcript(LONG, sid, session_records(sid, LONG, custom_title="Hello"))
+    fake.sidecar(LONG, sid, agents=3)
+    details = SessionStore(settings).details(sid)
+    folder = str(details.session.transcript_path.parent)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=(110, 24)) as pilot:
+        await pilot.pause()
+        pane = app.query_one(DetailsPane)
+        static = app.query_one("#details-text", Static)
+        narrow = pane.text.splitlines()
+        expected = painted_lines(pane, fmt.describe(details))
+        room = pane.scrollable_content_region.width
+        height = static.region.height
+        scrollbar = pane.show_vertical_scrollbar
+        await pilot.resize_terminal(220, 60)
+        await pilot.pause()
+        wide = pane.text.splitlines()
+
+    shown = next(line for line in narrow if line.startswith("Folder:"))
+    assert scrollbar and len(folder) > room
+    assert narrow == expected
+    assert all(len(line) <= room for line in narrow)
+    assert height == len(narrow) == len(wide)
+    assert settings.cut_mark in shown
+    assert shown.endswith("/" + folder.rsplit("/", 1)[1])
+    assert f"Folder:      {folder}" in wide
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:

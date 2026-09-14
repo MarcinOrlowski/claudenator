@@ -55,7 +55,7 @@ class Settings:
     confirm_delete: bool = False
 
     # How to format dates. See ``format.Formatter``.
-    time_format: str = "both"
+    time_format: str = "relative"
     time_pattern: str = "%Y-%m-%d %H:%M:%S"
     # A calendar day, for grouping Trash entries
     day_pattern: str = "%Y-%m-%d"
