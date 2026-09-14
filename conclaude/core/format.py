@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from conclaude.core.model import Session, SessionDetails
+from conclaude.core.model import Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 
 TIME_FORMATS = ("absolute", "relative", "both")
@@ -69,6 +69,10 @@ class Formatter:
         if self.settings.time_format == "both":
             return f"{self.absolute(moment)} ({self.relative(moment)})"
         return self.absolute(moment)
+
+    def day(self, moment: datetime) -> str:
+        """The local calendar day for grouping."""
+        return moment.astimezone().strftime(self.settings.day_pattern)
 
     def size(self, size: int) -> str:
         """Byte size in short form: ``12B``, ``3.4K``, ``1.2M``."""
@@ -137,4 +141,28 @@ class Formatter:
             )
         lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
         lines.append(("Damaged", "yes" if session.damaged else "no"))
+        return lines
+
+    def trash_line(self, entries: list[TrashEntry]) -> str:
+        """Info line about the trash content: ``Trash: 3 entries, 12.3M``."""
+        if not entries:
+            return "Trash: empty"
+        noun = "entry" if len(entries) == 1 else "entries"
+        total = sum(entry.size for entry in entries)
+        return f"Trash: {len(entries)} {noun}, {self.size(total)}"
+
+    def describe_entry(self, entry: TrashEntry) -> list[tuple[str, str]]:
+        """One Trash entry"""
+        lines = [
+            ("Session", entry.session_id),
+            ("Title", entry.title),
+            ("Project", entry.project_path),
+            ("Trashed", self.timestamp(entry.trashed_at)),
+            ("Reason", entry.reason or "-"),
+            ("Size", self.size(entry.size)),
+            ("Entry", str(entry.path)),
+        ]
+        for part in entry.parts:
+            label = part.kind.capitalize()
+            lines.append((label, f"{self.size(part.size)}  {part.original}"))
         return lines

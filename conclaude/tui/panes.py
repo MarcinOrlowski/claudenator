@@ -24,7 +24,7 @@ from textual.widgets import DataTable, Input, OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from conclaude.core.format import Formatter
-from conclaude.core.model import Project, Session, SessionDetails
+from conclaude.core.model import Project, Session, SessionDetails, TrashEntry
 from conclaude.core.store import sort_key
 
 # The keys every pane uses
@@ -35,6 +35,10 @@ SHARED_BINDINGS = [
     Binding("q", "app.quit", "Quit"),
 ]
 
+# The key that switches between the sessions and the Trash view.
+TO_TRASH = Binding("t", "screen.trash_mode", "Trash")
+TO_SESSIONS = Binding("t", "screen.sessions_mode", "Sessions")
+
 # The keys of a pane that can narrow its list to a typed text
 FILTER_BINDINGS = [
     Binding("slash", "filter", "Filter", key_display="/"),
@@ -42,15 +46,16 @@ FILTER_BINDINGS = [
 ]
 
 ALL_PROJECTS = "All projects"
+ALL_DAYS = "All days"
 
-# Room kept for the vertical scrollbar of the sessions table.
+# Room kept for the vertical scrollbar of a table.
 SCROLLBAR_WIDTH = 2
 
 # A flexible column is never squeezed below this limit.
 NARROWEST_COLUMN = 12
 
-# In the 'All projects' view the Title and Project columns share the room
-# that the fixed columns leave. This is the Title column's part of it.
+# When two flexible columns share the room that the fixed columns leave,
+# this is the first one's part of it.
 TITLE_SHARE = 0.6
 
 # The columns of the sessions table.
@@ -62,12 +67,29 @@ COLUMNS = {
     "project": "Project",
 }
 
+# The columns of the Trash table.
+ENTRY_COLUMNS = {
+    "title": "Title",
+    "trashed_at": "Trashed",
+    "size": "Size",
+    "project": "Project",
+}
+
 # A number or a time column sorts biggest value first when its column is chosen.
 # The other columns do alpha sort.
 BIGGEST_FIRST = {"last_used", "size", "msgs"}
 
 # The mark on the label of the column that sorts the rows.
 SORT_MARK = {True: " ▼", False: " ▲"}
+
+
+def flexible_widths(room: int, padding: int, two: bool) -> tuple[int, int]:
+    """How wide one or two flexible cols can be in the room the fixed ones leave."""
+    if not two:
+        return max(room - padding, NARROWEST_COLUMN), 0
+    room -= 2 * padding
+    first = max(int(room * TITLE_SHARE), NARROWEST_COLUMN)
+    return first, max(room - first, NARROWEST_COLUMN)
 
 
 class FilterWanted(Message):
@@ -166,69 +188,48 @@ class FilterBox(Input):
         self.pane.focus()
 
 
-class ProjectsPane(Filterable, OptionList):
-    """The left pane: every project with a session, under one 'All projects' line."""
+class Lister(OptionList):
+    """A left pane: one 'all' line, then one line per thing.
 
-    BINDINGS = [
-        *SHARED_BINDINGS,
-        *FILTER_BINDINGS,
-        Binding("enter", "select", "Sessions"),
-    ]
+    The highlight is held as an id, never as an index. Every subclass names
+    its own ``Chosen`` and ``Opened``, so a screen can tell the panes apart.
+    """
 
     class Chosen(Message):
-        """The highlight moved. ``path`` is None on the 'All projects' line."""
+        """The highlight moved. ``key`` is None on the 'all' line."""
 
-        def __init__(self, path: str | None) -> None:
+        def __init__(self, key: str | None) -> None:
             super().__init__()
-            self.path = path
+            self.key = key
 
     class Opened(Message):
-        """The user pressed enter on a project: they want to work on its sessions."""
+        """The user pressed enter on a line: they want to work on what it holds."""
 
-    def __init__(self) -> None:
-        super().__init__(id="projects")
-        self.border_title = "Projects"
-        self._projects: list[Project] = []
+    def __init__(self, id: str, title: str) -> None:
+        super().__init__(id=id)
+        self.border_title = title
         self._selected: str | None = None
-
-    @property
-    def selected_path(self) -> str | None:
-        """The path of the highlighted project, or None for 'All projects'."""
-        return self._selected
-
-    def show(self, projects: list[Project]) -> None:
-        """Replace the list. The highlight stays on its project when it is still there."""
-        self._projects = list(projects)
-        self._rebuild()
 
     def on_option_list_option_highlighted(
         self, event: OptionList.OptionHighlighted
     ) -> None:
-        """Turn the widget's own message into one that names the project."""
+        """Turn the widget's own message into one that names the line."""
         event.stop()
         self._selected = event.option_id
         self.post_message(self.Chosen(event.option_id))
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """Enter on a project."""
+        """Enter on a line."""
         event.stop()
         self.post_message(self.Opened())
 
-    def _rebuild(self) -> None:
-        """Put the lines back, with the filter in effect.
-
-        The highlight finds its project by path. When the project is gone, or
-        filtered out, the highlight takes the line that replaced it.
-        """
+    def _refill(self, first: str, ids: list[str]) -> None:
+        """Put the lines back: the 'all' line, then one per id."""
         wanted = self._selected
         index = self.highlighted or 0
         self.clear_options()
-        self.add_option(Option(Content(ALL_PROJECTS), id=None))
-        self.add_options(
-            Option(Content(project.path), id=project.path)
-            for project in self._projects
-            if self._matches(project.path)
-        )
+        self.add_option(Option(Content(first), id=None))
+        self.add_options(Option(Content(key), id=key) for key in ids)
         if wanted is None:
             index = 0
         else:
@@ -240,22 +241,174 @@ class ProjectsPane(Filterable, OptionList):
         self.highlighted = index
 
 
-class SessionsPane(Filterable, DataTable):
+class ProjectsPane(Filterable, Lister):
+    """The left pane: every project with a session, under one 'All projects' line."""
+
+    BINDINGS = [
+        *SHARED_BINDINGS,
+        TO_TRASH,
+        *FILTER_BINDINGS,
+        Binding("enter", "select", "Sessions"),
+    ]
+
+    class Chosen(Lister.Chosen):
+        """The highlight moved. ``path`` is None on the 'All projects' line."""
+
+        def __init__(self, path: str | None) -> None:
+            super().__init__(path)
+            self.path = path
+
+    class Opened(Lister.Opened):
+        """The user pressed enter on a project: they want to work on its sessions."""
+
+    def __init__(self) -> None:
+        super().__init__("projects", "Projects")
+        self._projects: list[Project] = []
+
+    @property
+    def selected_path(self) -> str | None:
+        """The path of the highlighted project, or None for 'All projects'."""
+        return self._selected
+
+    def show(self, projects: list[Project]) -> None:
+        """Replace the list. The highlight stays on its project when it is still there."""
+        self._projects = list(projects)
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        """Put the lines back, with the filter in effect."""
+        self._refill(
+            ALL_PROJECTS,
+            [project.path for project in self._projects if self._matches(project.path)],
+        )
+
+
+class DaysPane(Lister):
+    """The left pane in Trash mode: the days on which something was trashed."""
+
+    BINDINGS = [
+        *SHARED_BINDINGS,
+        TO_SESSIONS,
+        Binding("enter", "select", "Entries"),
+    ]
+
+    class Chosen(Lister.Chosen):
+        """The highlight moved. ``day`` is None on the 'All days' line."""
+
+        def __init__(self, day: str | None) -> None:
+            super().__init__(day)
+            self.day = day
+
+    class Opened(Lister.Opened):
+        """The user pressed enter on a day: they want to work on its entries."""
+
+    def __init__(self, fmt: Formatter) -> None:
+        super().__init__("days", "Days")
+        self.fmt = fmt
+        self._days: list[str] = []
+
+    @property
+    def selected_day(self) -> str | None:
+        """The highlighted day, or None for 'All days'."""
+        return self._selected
+
+    def show(self, entries: list[TrashEntry]) -> None:
+        """Replace the days with the ones these entries went in on, newest first.
+
+        The highlight stays on its day when it is still there.
+        """
+        days: list[str] = []
+        for entry in entries:
+            day = self.fmt.day(entry.trashed_at)
+            if day not in days:
+                days.append(day)
+        self._days = days
+        self._refill(ALL_DAYS, self._days)
+
+
+class Table(Filterable, DataTable):
+    """An upper right pane."""
+
+    # The actions that need a row under the cursor. They dim with an empty table.
+    ROW_ACTIONS: frozenset[str] = frozenset()
+
+    class Chosen(Message):
+        """The cursor moved to a row, or the table went empty (``None``)."""
+
+        def __init__(self, key: str | None) -> None:
+            super().__init__()
+            self.key = key
+
+    def __init__(self, id: str, title: str, fmt: Formatter) -> None:
+        super().__init__(id=id, cursor_type="row")
+        self.border_title = title
+        self.fmt = fmt
+        self._selected: str | None = None
+        self._widths: tuple[int, int] = (0, 0)
+
+    @property
+    def selected_id(self) -> str | None:
+        """The key of the row under the cursor, or None when there is none."""
+        return self._selected
+
+    def drop(self, key: str) -> None:
+        """Take one row out of the table in place."""
+        if self.rows.get(key) is not None:
+            self.remove_row(key)
+        self._announce()
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Dim the keys that need a row while there is none to act on."""
+        if action in self.ROW_ACTIONS:
+            return True if self.row_count else None
+        return super().check_action(action, parameters)
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Turn the widget's own message into one that names the row."""
+        event.stop()
+        self._select(event.row_key.value)
+
+    def _select(self, key: str | None) -> None:
+        self._selected = key
+        self.post_message(self.Chosen(key))
+
+    def _announce(self) -> None:
+        """Say what the cursor sits on now, even when no row event will."""
+        if not self.row_count:
+            self._select(None)
+        else:
+            cell = self.coordinate_to_cell_key(self.cursor_coordinate)
+            self._select(cell.row_key.value)
+        # The keys that need a row dim with an empty table and come back with one
+        self.refresh_bindings()
+
+    def _place_cursor(self, wanted: str | None, index: int) -> None:
+        """After a rebuild, the cursor finds its row by key, or takes the row at ``index``."""
+        if self.row_count:
+            if wanted is not None and self.rows.get(wanted) is not None:
+                index = self.get_row_index(wanted)
+            self.move_cursor(row=min(index, self.row_count - 1), animate=False)
+        self._announce()
+
+
+class SessionsPane(Table):
     """The upper right pane: the sessions of one project."""
 
     BINDINGS = [
         *SHARED_BINDINGS,
+        TO_TRASH,
         *FILTER_BINDINGS,
-        Binding("d", "trash", "Trash"),
+        Binding("d", "trash", "Delete"),
         Binding("o", "sort_next", "Sort"),
         Binding("O", "sort_reverse", "Reverse"),
     ]
+    ROW_ACTIONS = frozenset({"trash"})
 
-    class Chosen(Message):
+    class Chosen(Table.Chosen):
         """The cursor moved to a session, or the table went empty (``None``)."""
 
         def __init__(self, session_id: str | None) -> None:
-            super().__init__()
+            super().__init__(session_id)
             self.session_id = session_id
 
     class TrashWanted(Message):
@@ -266,21 +419,12 @@ class SessionsPane(Filterable, DataTable):
             self.session = session
 
     def __init__(self, fmt: Formatter) -> None:
-        super().__init__(id="sessions", cursor_type="row")
-        self.border_title = "Sessions"
-        self.fmt = fmt
+        super().__init__("sessions", "Sessions", fmt)
         self._sessions: list[Session] = []
         self._by_id: dict[str, Session] = {}
         self._with_project = False
-        self._selected: str | None = None
-        self._widths: tuple[int, int] = (0, 0)
         self._sort_column = "last_used"
         self._sort_descending = True
-
-    @property
-    def selected_id(self) -> str | None:
-        """The id of the session under the cursor, or None when there is none."""
-        return self._selected
 
     @property
     def selected(self) -> Session | None:
@@ -306,28 +450,16 @@ class SessionsPane(Filterable, DataTable):
         self._rebuild()
 
     def drop(self, session_id: str) -> None:
-        """Take one session out of the table in place. The other rows do not move.
-
-        When the cursor sat on that row, it lands on the row that slid up into
-        its place: the next session down, or the last one when there is none.
-        """
+        """Take one session out of the table in place."""
         self._sessions = [s for s in self._sessions if s.id != session_id]
         self._by_id.pop(session_id, None)
-        if self.rows.get(session_id) is not None:
-            self.remove_row(session_id)
-        self._announce()
+        super().drop(session_id)
 
     def action_trash(self) -> None:
         """The d key: ask for the session under the cursor to go to the Trash."""
         session = self.selected
         if session is not None:
             self.post_message(self.TrashWanted(session))
-
-    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        """Dim 'Trash' while there is no row to act on."""
-        if action == "trash":
-            return True if self.row_count else None
-        return super().check_action(action, parameters)
 
     def sort_by(self, column: str, descending: bool | None = None) -> None:
         """Order the rows by one column.
@@ -369,25 +501,6 @@ class SessionsPane(Filterable, DataTable):
         if self._sessions and self._fit() != self._widths:
             self._rebuild()
 
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        """Turn the widget's own message into one that names the session."""
-        event.stop()
-        self._select(event.row_key.value)
-
-    def _select(self, session_id: str | None) -> None:
-        self._selected = session_id
-        self.post_message(self.Chosen(session_id))
-
-    def _announce(self) -> None:
-        """Say what the cursor sits on now, even when no row event will."""
-        if not self.row_count:
-            self._select(None)
-        else:
-            cell = self.coordinate_to_cell_key(self.cursor_coordinate)
-            self._select(cell.row_key.value)
-        # 'Trash' dims with an empty table and comes back with a row
-        self.refresh_bindings()
-
     def _shown_columns(self) -> list[str]:
         """The keys of the columns on view, left to right."""
         return [key for key in COLUMNS if key != "project" or self._with_project]
@@ -419,11 +532,7 @@ class SessionsPane(Filterable, DataTable):
             + 3 * padding
         )
         room = self.size.width - SCROLLBAR_WIDTH - fixed
-        if not self._with_project:
-            return max(room - padding, NARROWEST_COLUMN), 0
-        room -= 2 * padding
-        title = max(int(room * TITLE_SHARE), NARROWEST_COLUMN)
-        return title, max(room - title, NARROWEST_COLUMN)
+        return flexible_widths(room, padding, self._with_project)
 
     def _rebuild(self) -> None:
         """Put the rows back."""
@@ -452,36 +561,169 @@ class SessionsPane(Filterable, DataTable):
                     Text(session.project_path, no_wrap=True, overflow="ellipsis")
                 )
             self.add_row(*cells, key=session.id)
-        if self.row_count:
-            if wanted is not None and self.rows.get(wanted) is not None:
-                index = self.get_row_index(wanted)
-            self.move_cursor(row=min(index, self.row_count - 1), animate=False)
-        self._announce()
+        self._place_cursor(wanted, index)
 
 
-class DetailsPane(VerticalScroll):
-    """The lower right pane: one session in full, the same lines ``info`` prints."""
+class EntriesPane(Table):
+    """The upper right pane in Trash mode: the entries of one day, newest first."""
 
-    BINDINGS = [*SHARED_BINDINGS]
+    BINDINGS = [
+        *SHARED_BINDINGS,
+        TO_SESSIONS,
+        *FILTER_BINDINGS,
+        Binding("u", "restore", "Restore"),
+        Binding("x", "purge", "Purge"),
+    ]
+    ROW_ACTIONS = frozenset({"restore", "purge"})
+
+    class Chosen(Table.Chosen):
+        """The cursor moved to an entry, or the table went empty (``None``)."""
+
+        def __init__(self, entry_id: str | None) -> None:
+            super().__init__(entry_id)
+            self.entry_id = entry_id
+
+    class RestoreWanted(Message):
+        """The user pressed u: the entry under the cursor goes back where it came from."""
+
+        def __init__(self, entry: TrashEntry) -> None:
+            super().__init__()
+            self.entry = entry
+
+    class PurgeWanted(Message):
+        """The user pressed x: the entry under the cursor leaves the disk for good."""
+
+        def __init__(self, entry: TrashEntry) -> None:
+            super().__init__()
+            self.entry = entry
 
     def __init__(self, fmt: Formatter) -> None:
-        super().__init__(id="details")
-        self.border_title = "Details"
+        super().__init__("entries", "Trash", fmt)
+        self._entries: list[TrashEntry] = []
+        self._by_id: dict[str, TrashEntry] = {}
+
+    @property
+    def selected(self) -> TrashEntry | None:
+        """The entry under the cursor, or None when there is none."""
+        if self._selected is None:
+            return None
+        return self._by_id.get(self._selected)
+
+    def show(self, entries: list[TrashEntry]) -> None:
+        """Replace the rows, in the order given. The cursor stays on its entry."""
+        self._entries = list(entries)
+        self._by_id = {entry.id: entry for entry in self._entries}
+        self._rebuild()
+
+    def drop(self, entry_id: str) -> None:
+        """Take one entry out of the table in place."""
+        self._entries = [e for e in self._entries if e.id != entry_id]
+        self._by_id.pop(entry_id, None)
+        super().drop(entry_id)
+
+    def action_restore(self) -> None:
+        """The u key: ask for the entry under the cursor to go back."""
+        entry = self.selected
+        if entry is not None:
+            self.post_message(self.RestoreWanted(entry))
+
+    def action_purge(self) -> None:
+        """The x key: ask for the entry under the cursor to leave the disk."""
+        entry = self.selected
+        if entry is not None:
+            self.post_message(self.PurgeWanted(entry))
+
+    def on_resize(self) -> None:
+        """Refit the flexible columns when the room changes."""
+        if self._entries and self._fit() != self._widths:
+            self._rebuild()
+
+    def _rows(self) -> list[TrashEntry]:
+        """The entries on view: the filter in effect, newest first."""
+        return [e for e in self._entries if self._matches(e.title)]
+
+    def _fit(self) -> tuple[int, int]:
+        """How wide the Title and Project columns can be with the room on hand."""
+        padding = 2 * self.cell_padding
+        times = [len(self.fmt.timestamp(e.trashed_at)) for e in self._entries]
+        sizes = [len(self.fmt.size(e.size)) for e in self._entries]
+        fixed = (
+            max([len(ENTRY_COLUMNS["trashed_at"]), *times])
+            + max([len(ENTRY_COLUMNS["size"]), *sizes])
+            + 2 * padding
+        )
+        room = self.size.width - SCROLLBAR_WIDTH - fixed
+        return flexible_widths(room, padding, True)
+
+    def _rebuild(self) -> None:
+        """Put the rows back."""
+        wanted = self._selected
+        index = self.cursor_row
+        self._widths = self._fit()
+        title_width, project_width = self._widths
+        self.clear(columns=True)
+        self.add_column(ENTRY_COLUMNS["title"], key="title", width=title_width)
+        self.add_column(ENTRY_COLUMNS["trashed_at"], key="trashed_at")
+        self.add_column(Text(ENTRY_COLUMNS["size"], justify="right"), key="size")
+        self.add_column(ENTRY_COLUMNS["project"], key="project", width=project_width)
+        for entry in self._rows():
+            self.add_row(
+                Text(entry.title, no_wrap=True, overflow="ellipsis"),
+                self.fmt.timestamp(entry.trashed_at),
+                Text(self.fmt.size(entry.size), justify="right"),
+                Text(entry.project_path, no_wrap=True, overflow="ellipsis"),
+                key=entry.id,
+            )
+        self._place_cursor(wanted, index)
+
+
+class Lines(VerticalScroll):
+    """A lower right pane: one thing in full, as label and value lines."""
+
+    def __init__(self, id: str, title: str, fmt: Formatter, empty: str) -> None:
+        super().__init__(id=id)
+        self.border_title = title
         self.fmt = fmt
+        self._empty = empty
         self.text = ""
 
     def compose(self) -> ComposeResult:
         """One block of text, scrolled by the pane around it."""
-        yield Static(id="details-text", markup=False)
+        yield Static(id=f"{self.id}-text", markup=False)
 
-    def show(self, details: SessionDetails | None) -> None:
-        """Show one session, or the empty state when there is none."""
-        if details is None:
-            self.text = "No session."
+    def show_lines(self, lines: list[tuple[str, str]] | None) -> None:
+        """Show these lines, or the empty state when there are none."""
+        if not lines:
+            self.text = self._empty
         else:
-            lines = self.fmt.describe(details)
             width = max(len(label) for label, _ in lines) + 1
             self.text = "\n".join(
                 f"{(label + ':').ljust(width)} {value}" for label, value in lines
             )
-        self.query_one("#details-text", Static).update(self.text)
+        self.query_one(f"#{self.id}-text", Static).update(self.text)
+
+
+class DetailsPane(Lines):
+    """The lower right pane: one session in full, the same lines ``info`` prints."""
+
+    BINDINGS = [*SHARED_BINDINGS, TO_TRASH]
+
+    def __init__(self, fmt: Formatter) -> None:
+        super().__init__("details", "Details", fmt, "No session.")
+
+    def show(self, details: SessionDetails | None) -> None:
+        """Show one session, or the empty state when there is none."""
+        self.show_lines(self.fmt.describe(details) if details is not None else None)
+
+
+class EntryPane(Lines):
+    """The lower right pane in Trash mode: one entry in full, with every part."""
+
+    BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS]
+
+    def __init__(self, fmt: Formatter) -> None:
+        super().__init__("entry", "Entry", fmt, "No entry.")
+
+    def show(self, entry: TrashEntry | None) -> None:
+        """Show one entry, or the empty state when there is none."""
+        self.show_lines(self.fmt.describe_entry(entry) if entry is not None else None)

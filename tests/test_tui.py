@@ -14,25 +14,32 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from textual.color import Color, ColorParseError
 from textual.theme import BUILTIN_THEMES
-from textual.widgets import DataTable, Static
+from textual.widgets import DataTable, Header, Static
 
 import conclaude.tui.app
 from conclaude.core.format import Formatter
+from conclaude.core.model import TrashEntry
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
-from conclaude.tui.app import ConclaudeApp, MainScreen
+from conclaude.core.trash import trash_session
+from conclaude.tui.app import ConclaudeApp, MainScreen, TrashScreen
 from conclaude.tui.panes import (
+    ALL_DAYS,
     ALL_PROJECTS,
+    DaysPane,
     DetailsPane,
+    EntriesPane,
+    EntryPane,
     FilterBox,
     ProjectsPane,
     SessionsPane,
 )
-from tests.fabricate import FakeClaude, FakeProc, new_id, session_records
+from tests.fabricate import FakeClaude, FakeProc, new_id, session_records, snapshot
 
 WIDE = (140, 40)
 
@@ -79,13 +86,15 @@ async def test_three_panes_projects_left_sessions_upper_right_details_lower_righ
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
+        header = app.query_one(Header).region
         projects = app.query_one(ProjectsPane).region
         sessions = app.query_one(SessionsPane).region
         details = app.query_one(DetailsPane).region
 
+    assert (header.x, header.y, header.width, header.height) == (0, 0, WIDE[0], 1)
     assert projects.x == 0
     assert projects.right == sessions.x == details.x
-    assert sessions.y == 0
+    assert projects.y == sessions.y == header.bottom
     assert sessions.bottom == details.y
     assert projects.bottom >= details.bottom
     assert settings.projects_pane_min_width <= projects.width
@@ -333,9 +342,11 @@ def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
     """No key is bound on the app or the screen: every key belongs to a pane."""
     assert "BINDINGS" not in ConclaudeApp.__dict__
     assert "BINDINGS" not in MainScreen.__dict__
-    for pane in (ProjectsPane, SessionsPane, DetailsPane):
+    assert "BINDINGS" not in TrashScreen.__dict__
+    panes = (ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane)
+    for pane in panes:
         keys = {binding.key for binding in pane.__dict__["BINDINGS"]}
-        assert {"tab", "q"} <= keys, pane.__name__
+        assert {"tab", "q", "r", "t"} <= keys, pane.__name__
 
 
 async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
@@ -773,7 +784,7 @@ async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
         focused = type(app.focused)
         shown = toasts(app)
 
-    assert (keys["d"], enabled) == ("Trash", True)
+    assert (keys["d"], enabled) == ("Delete", True)
     assert after == ([a2, b1], a2, 0)
     assert f"Id:          {a2}" in text
     assert focused is SessionsPane
@@ -934,6 +945,497 @@ async def test_with_no_row_d_is_dimmed_and_does_nothing(
     assert dimmed == (True, False)
     assert shown == []
     assert trashed(settings) == []
+
+
+def days(app: ConclaudeApp) -> list[str]:
+    """The lines of the days pane, top to bottom."""
+    return [str(option.prompt) for option in app.screen.query_one(DaysPane).options]
+
+
+def prompts(app: ConclaudeApp) -> list[str]:
+    """The lines of the projects pane, top to bottom."""
+    return [str(option.prompt) for option in app.screen.query_one(ProjectsPane).options]
+
+
+def cursor(table: DataTable) -> tuple[list[str], str | None, int]:
+    """The rows, the selected key and the cursor row, in one tuple."""
+    return rows(table), table.selected_id, table.cursor_row
+
+
+def two_days_of_trash(
+    fake: FakeClaude, settings: Settings
+) -> tuple[TrashEntry, TrashEntry, TrashEntry]:
+    """The three sessions, trashed: A1 then A2 on one day, B1 the day before."""
+    a1, a2, b1 = three_sessions(fake)
+    store = SessionStore(settings)
+    later = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
+    e_a1 = trash_session(settings, store.find_session(a1), now=later)
+    e_a2 = trash_session(
+        settings, store.find_session(a2), now=later - timedelta(minutes=5)
+    )
+    e_b1 = trash_session(
+        settings, store.find_session(b1), now=later - timedelta(days=1)
+    )
+    return e_a1, e_a2, e_b1
+
+
+async def test_t_switches_the_panes_to_the_trash_and_back_again(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """T switches the panes to the Trash. T again brings the sessions back as they were."""
+    a1, a2, b1 = three_sessions(fake)
+    entry = SessionStore(settings).trash(b1)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("tab", "down")
+        await pilot.pause()
+        before = type(app.screen), type(app.focused), shown_keys(app)["t"]
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        in_trash = (
+            type(app.screen),
+            type(app.focused),
+            shown_keys(app)["t"],
+            days(app),
+            cursor(table),
+            columns(table),
+        )
+        header = app.screen.query_one(Header).region
+        left = app.screen.query_one(DaysPane).region
+        upper = table.region
+        lower = app.screen.query_one(EntryPane).region
+        await pilot.press("t")
+        await pilot.pause()
+        sessions = app.screen.query_one(SessionsPane)
+        after = type(app.screen), type(app.focused), cursor(sessions)
+
+    assert before == (MainScreen, SessionsPane, "Trash")
+    assert in_trash == (
+        TrashScreen,
+        EntriesPane,
+        "Sessions",
+        [ALL_DAYS, fmt.day(entry.trashed_at)],
+        ([entry.id], entry.id, 0),
+        ["Title", "Trashed", "Size", "Project"],
+    )
+    assert (header.y, header.height) == (0, 1)
+    assert left.x == 0
+    assert left.right == upper.x == lower.x
+    assert left.y == upper.y == header.bottom
+    assert upper.bottom == lower.y
+    assert after == (MainScreen, SessionsPane, ([a1, a2], a2, 1))
+
+
+async def test_the_trash_lists_its_entries_newest_first_grouped_by_day(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash lists its entries newest first. A day on the left narrows them to it."""
+    e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        pane = app.screen.query_one(DaysPane)
+        listed = days(app), rows(table), pane.selected_day
+        cells = [
+            str(table.get_cell(e_a1.id, key))
+            for key in ("title", "trashed_at", "size", "project")
+        ]
+        await pilot.press("shift+tab", "down")
+        await pilot.pause()
+        later = type(app.focused), pane.selected_day, rows(table)
+        await pilot.press("down")
+        await pilot.pause()
+        earlier = pane.selected_day, rows(table)
+        await pilot.press("enter")
+        await pilot.pause()
+        entered = type(app.focused)
+
+    day_later, day_earlier = fmt.day(e_a1.trashed_at), fmt.day(e_b1.trashed_at)
+    assert day_later != day_earlier
+    assert fmt.day(e_a2.trashed_at) == day_later
+    assert listed == (
+        [ALL_DAYS, day_later, day_earlier],
+        [e_a1.id, e_a2.id, e_b1.id],
+        None,
+    )
+    assert cells == ["A1", fmt.timestamp(e_a1.trashed_at), fmt.size(e_a1.size), "/p/a"]
+    assert later == (DaysPane, day_later, [e_a1.id, e_a2.id])
+    assert earlier == (day_earlier, [e_b1.id])
+    assert entered is EntriesPane
+
+
+async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The entry pane shows the entry under the cursor: the session, when, the size, the parts."""
+    sid, other = new_id(), new_id()
+    parts = fake.every_part("/p/x", sid)
+    fake.transcript("/p/x", other)
+    store = SessionStore(settings)
+    later = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
+    entry = trash_session(
+        settings, store.find_session(sid), reason="pressed d", now=later
+    )
+    trash_session(settings, store.find_session(other), now=later - timedelta(hours=1))
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        pane = app.screen.query_one(EntryPane)
+        first = pane.text
+        painted = str(app.screen.query_one("#entry-text", Static).render())
+        await pilot.press("down")
+        await pilot.pause()
+        second = pane.text
+
+    assert painted == first
+    for label, value in fmt.describe_entry(entry):
+        assert re.search(
+            rf"^{re.escape(label)}: +{re.escape(value)}$", first, re.M
+        ), label
+    assert re.search(rf"^Session: +{sid}$", first, re.M)
+    assert re.search(rf"^Trashed: +{re.escape(fmt.timestamp(later))}$", first, re.M)
+    assert re.search(r"^Reason: +pressed d$", first, re.M)
+    assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
+    for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
+        where = re.escape(str(parts[kind]))
+        assert re.search(rf"^{kind.capitalize()}: +\S+  {where}$", first, re.M), kind
+    assert re.search(rf"^Session: +{other}$", second, re.M)
+    assert sid not in second
+
+
+async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_reload(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """U puts the entry back. Its row goes. Back with the sessions, the session is listed."""
+    a1, a2, b1 = three_sessions(fake)
+    entry = SessionStore(settings).trash(b1)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        before = prompts(app)
+        await pilot.press("t")
+        await pilot.pause()
+        keys = shown_keys(app)
+        await pilot.press("u")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        emptied = cursor(table), days(app), app.screen.query_one(EntryPane).text
+        shown = toasts(app)
+        # A session that lands on the disk now shows up only after a reload
+        late = new_id()
+        fake.transcript("/p/a", late, session_records(late, "/p/a"), mtime=4000)
+        await pilot.press("t")
+        await pilot.pause()
+        after = prompts(app), cursor(app.screen.query_one(SessionsPane))
+        text = app.screen.query_one(DetailsPane).text
+
+    assert before == [ALL_PROJECTS, "/p/a"]
+    assert (keys["u"], keys["x"]) == ("Restore", "Purge")
+    assert emptied == (([], None, 0), [ALL_DAYS], "No entry.")
+    assert shown == []
+    assert not entry.path.exists()
+    assert trashed(settings) == []
+    assert after == ([ALL_PROJECTS, "/p/a", "/p/b"], ([a1, a2, b1], a1, 0))
+    assert f"Id:          {a1}" in text
+
+
+async def test_a_restore_blocked_by_an_occupied_path_reports_the_clash_and_changes_nothing(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A restore blocked by something in its way reports the clash and changes nothing."""
+    a1, a2, b1 = three_sessions(fake)
+    entry = SessionStore(settings).trash(a1)
+    # Something new sits where the transcript must go back
+    in_the_way = fake.transcript(
+        "/p/a", a1, session_records(a1, "/p/a", custom_title="New"), mtime=3000
+    )
+    before = snapshot(settings.claude_dir), snapshot(settings.trash_dir)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t", "u")
+        await pilot.pause()
+        after = type(app.screen), cursor(app.screen.query_one(EntriesPane))
+        shown = toasts(app)
+        await pilot.press("t")
+        await pilot.pause()
+        listed = rows(app.screen.query_one(SessionsPane))
+
+    assert after == (TrashScreen, ([entry.id], entry.id, 0))
+    assert shown == [
+        (
+            "error",
+            "Not restored",
+            f"cannot restore {entry.id}: {in_the_way} is in the way",
+        )
+    ]
+    assert (snapshot(settings.claude_dir), snapshot(settings.trash_dir)) == before
+    assert listed == [a1, a2, b1]
+
+
+async def test_x_removes_the_entry_for_good(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """X removes the entry from the disk for good. The session does not come back."""
+    a1, a2, b1 = three_sessions(fake)
+    entry = SessionStore(settings).trash(a1)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t", "x")
+        await pilot.pause()
+        emptied = cursor(app.screen.query_one(EntriesPane)), days(app), toasts(app)
+        await pilot.press("t")
+        await pilot.pause()
+        listed = rows(app.screen.query_one(SessionsPane))
+
+    assert emptied == (([], None, 0), [ALL_DAYS], [])
+    assert not entry.path.exists()
+    assert trashed(settings) == []
+    assert listed == [a2, b1]
+    assert {s.id for s in SessionStore(settings).list_sessions()} == {a2, b1}
+
+
+async def test_the_header_shows_what_the_trash_holds_and_follows_every_change(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The header shows the total Trash size. It follows a delete, a restore and a purge."""
+    a1, _a2, b1 = three_sessions(fake)
+    store = SessionStore(settings)
+    a1_size = store.find_session(a1).size
+    long_ago = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    old = trash_session(settings, store.find_session(b1), now=long_ago)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        header = app.screen.query_one(Header)
+        at_start = header.screen_title, header.screen_sub_title, app.sub_title
+        await pilot.press("tab", "d")
+        await pilot.pause()
+        after_delete = app.sub_title
+        await pilot.press("t")
+        await pilot.pause()
+        in_trash = app.screen.query_one(Header).screen_sub_title
+        await pilot.press("u")
+        await pilot.pause()
+        after_restore = app.sub_title
+        await pilot.press("x")
+        await pilot.pause()
+        after_purge = app.sub_title
+        await pilot.press("t")
+        await pilot.pause()
+        back = app.screen.query_one(Header).screen_sub_title
+
+    one = f"Trash: 1 entry, {fmt.size(old.size)}"
+    two = f"Trash: 2 entries, {fmt.size(old.size + a1_size)}"
+    assert at_start == ("conclaude", one, one)
+    assert after_delete == two
+    assert in_trash == two
+    assert after_restore == one
+    assert after_purge == "Trash: empty"
+    assert back == "Trash: empty"
+
+
+async def test_restore_and_purge_do_nothing_outside_the_trash_table(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """U and x are not listed and do nothing outside the Trash table."""
+    a1, a2, b1 = three_sessions(fake)
+    entry = SessionStore(settings).trash(b1)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        seen = []
+        for _ in range(3):
+            listed = {"u", "x"} & set(shown_keys(app))
+            await pilot.press("u", "x")
+            await pilot.pause()
+            seen.append(
+                (type(app.focused), listed, rows(app.screen.query_one(SessionsPane)))
+            )
+            await pilot.press("tab")
+        await pilot.press("t")
+        await pilot.pause()
+        for _ in range(2):
+            await pilot.press("tab")
+            await pilot.pause()
+            listed = {"u", "x"} & set(shown_keys(app))
+            await pilot.press("u", "x")
+            await pilot.pause()
+            seen.append(
+                (type(app.focused), listed, rows(app.screen.query_one(EntriesPane)))
+            )
+        shown = toasts(app)
+
+    assert seen == [
+        (ProjectsPane, set(), [a1, a2]),
+        (SessionsPane, set(), [a1, a2]),
+        (DetailsPane, set(), [a1, a2]),
+        (EntryPane, set(), [entry.id]),
+        (DaysPane, set(), [entry.id]),
+    ]
+    assert shown == []
+    assert trashed(settings) == [b1]
+
+
+async def test_with_an_empty_trash_the_panes_are_empty_and_the_keys_are_dimmed(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """With an empty Trash the panes are empty, u and x are dimmed and do nothing."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        empty = (
+            days(app),
+            cursor(table),
+            app.screen.query_one(EntryPane).text,
+            app.sub_title,
+        )
+        dimmed = [
+            (app.active_bindings[key].binding.show, app.active_bindings[key].enabled)
+            for key in ("u", "x")
+        ]
+        await pilot.press("u", "x")
+        await pilot.pause()
+        shown = toasts(app)
+        await pilot.press("t")
+        await pilot.pause()
+        back = type(app.screen)
+
+    assert empty == ([ALL_DAYS], ([], None, 0), "No entry.", "Trash: empty")
+    assert dimmed == [(True, False), (True, False)]
+    assert shown == []
+    assert back is MainScreen
+
+
+async def test_the_last_entry_of_a_day_takes_the_day_with_it(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The last entry of a day takes the day with it. The cursor moves on to the next day."""
+    e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        pane = app.screen.query_one(DaysPane)
+        table = app.screen.query_one(EntriesPane)
+        await pilot.press("shift+tab", "down", "down", "tab")
+        await pilot.pause()
+        before = pane.selected_day, rows(table)
+        await pilot.press("x")
+        await pilot.pause()
+        after = days(app), pane.selected_day, cursor(table), type(app.focused)
+        text = app.screen.query_one(EntryPane).text
+
+    day_later = fmt.day(e_a1.trashed_at)
+    assert before == (fmt.day(e_b1.trashed_at), [e_b1.id])
+    assert after == (
+        [ALL_DAYS, day_later],
+        day_later,
+        ([e_a1.id, e_a2.id], e_a1.id, 0),
+        EntriesPane,
+    )
+    assert e_a1.session_id in text
+    assert trashed(settings) == sorted([e_a1.session_id, e_a2.session_id])
+
+
+async def test_repeated_u_walks_down_the_entries_and_every_session_put_back_is_listed(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Repeated u walks down the entries. Every session put back is listed on return."""
+    e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        at_start = prompts(app)
+        await pilot.press("t", "down")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        seen = [cursor(table)]
+        for _ in range(2):
+            await pilot.press("u")
+            await pilot.pause()
+            seen.append(cursor(table))
+        await pilot.press("t")
+        await pilot.pause()
+        back = prompts(app), cursor(app.screen.query_one(SessionsPane))
+
+    a1, a2, b1 = e_a1.session_id, e_a2.session_id, e_b1.session_id
+    assert at_start == [ALL_PROJECTS]
+    assert seen == [
+        ([e_a1.id, e_a2.id, e_b1.id], e_a2.id, 1),
+        ([e_a1.id, e_b1.id], e_b1.id, 1),
+        ([e_a1.id], e_a1.id, 0),
+    ]
+    assert back == ([ALL_PROJECTS, "/p/a", "/p/b"], ([a2, b1], a2, 0))
+    assert trashed(settings) == [a1]
+
+
+async def test_slash_narrows_the_entries_by_title(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Slash narrows the entries by title, case aside. Escape brings them all back."""
+    e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t", "slash", "b")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        narrowed = type(app.focused), cursor(table), table.filter_text
+        await pilot.press("escape")
+        await pilot.pause()
+        cleared = type(app.focused), rows(table), table.filter_text
+
+    assert narrowed == (FilterBox, ([e_b1.id], e_b1.id, 0), "b")
+    assert cleared == (EntriesPane, [e_a1.id, e_a2.id, e_b1.id], "")
+
+
+async def test_r_in_trash_mode_reads_the_trash_again_and_the_cursor_keeps_its_entry(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """R in Trash mode reads the Trash again. The cursor keeps its entry by id."""
+    a1, a2, _b1 = three_sessions(fake)
+    store = SessionStore(settings)
+    noon = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
+    first = trash_session(settings, store.find_session(a2), now=noon)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        before = cursor(table)
+        second = trash_session(
+            settings, store.find_session(a1), now=noon + timedelta(minutes=1)
+        )
+        await pilot.press("r")
+        await pilot.pause()
+        after = cursor(table), app.sub_title
+
+    assert before == ([first.id], first.id, 0)
+    assert after == (
+        ([second.id, first.id], first.id, 1),
+        f"Trash: 2 entries, {fmt.size(first.size + second.size)}",
+    )
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:

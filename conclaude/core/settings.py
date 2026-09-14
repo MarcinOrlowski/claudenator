@@ -57,6 +57,8 @@ class Settings:
     # How to format dates. See ``format.Formatter``.
     time_format: str = "both"
     time_pattern: str = "%Y-%m-%d %H:%M:%S"
+    # A calendar day, for grouping Trash entries
+    day_pattern: str = "%Y-%m-%d"
 
     # Reading transcripts. See ``scan.read_cheap`` for what these bound.
     head_records: int = 500
