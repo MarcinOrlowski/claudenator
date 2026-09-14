@@ -1,9 +1,8 @@
-"""Move a session to the Trash.
+"""Move a session to the Trash, and bring it back or remove it for good.
 
 CC writes its parts to many places, all named after the session id. Trashing moves
-every one of those parts into one entry folder under the Trash, in the same folder
-shape they came from, next to a manifest that says where each part belongs.
-Nothing leaves the disk. Nothing shared between sessions is touched.
+every one of those parts into one entry folder under the Trash. Nothing shared
+between sessions is touched.
 """
 
 from __future__ import annotations
@@ -20,7 +19,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
-from conclaude.core.errors import SessionIsLive, SessionNotFound, TrashFailed
+from conclaude.core.errors import (
+    PurgeFailed,
+    RestoreClash,
+    RestoreFailed,
+    SessionIsLive,
+    SessionNotFound,
+    TrashEntryDamaged,
+    TrashEntryNotFound,
+    TrashFailed,
+)
 from conclaude.core.live import find_live, iter_markers, read_marker
 from conclaude.core.model import Part, Session, TrashEntry
 from conclaude.core.scan import folder_size
@@ -29,8 +37,7 @@ from conclaude.core.settings import Settings
 MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 1
 
-# Inside an entry, the parts sit under this folder, in the shape they had
-# under Claude Code's folder. ``ls`` shows exactly where each came from.
+# Inside an entry, the parts sit under this folder.
 CLAUDE_SUBDIR = "claude"
 
 # How many times a name is retried when the same session goes to the Trash
@@ -42,9 +49,7 @@ NAME_RETRIES = 100
 def held_lock(settings: Settings) -> Generator[None, None, None]:
     """Hold the Trash lock. Waits until any other holder lets go.
 
-    Two running copies of the tool may both look around freely. Only a move
-    takes this lock, so two moves never interleave. The lock is a kernel
-    file lock, so it holds across processes and is dropped if one dies.
+    Only a move uses this lock.
     """
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     with open(settings.trash_lock_file, "ab") as handle:
@@ -84,8 +89,7 @@ def markers_naming(sessions_dir: Path, session_id: str) -> list[Path]:
 def _part(settings: Settings, kind: str, path: Path) -> Part | None:
     """A part for a path, or None when nothing sits there.
 
-    Symlinks are not followed. A link is a part of its own and moves as a
-    link, so whatever it points at is never touched.
+    Symlinks are not resolved and moved as-is. Whatever it points to is not touched.
     """
     try:
         st = os.lstat(path)
@@ -98,12 +102,7 @@ def _part(settings: Settings, kind: str, path: Path) -> Part | None:
 
 
 def find_parts(settings: Settings, session: Session) -> list[Part]:
-    """Every part of a session that exists on the disk right now.
-
-    Every location is optional. Only what is there is listed. The list is in
-    a fixed order: the transcript first, then its sidecar, then the small
-    folders, then whatever the shell patterns matched.
-    """
+    """Every part of a session that exists on the disk right now."""
     sid = session.id
     transcript = session.transcript_path
     wanted: list[tuple[str, Path]] = [
@@ -130,12 +129,7 @@ def find_parts(settings: Settings, session: Session) -> list[Part]:
 
 
 def copy_then_remove(source: Path, target: Path) -> None:
-    """Move by copying and then removing the original.
-
-    This is what a move degrades to across two filesystems. Symlinks are
-    copied as links, never followed, so nothing outside the source is read
-    or removed.
-    """
+    """Move by copying and then removing the original."""
     if source.is_dir() and not source.is_symlink():
         shutil.copytree(source, target, symlinks=True)
         shutil.rmtree(source)
@@ -145,12 +139,7 @@ def copy_then_remove(source: Path, target: Path) -> None:
 
 
 def move(source: Path, target: Path) -> None:
-    """Move a file or a folder, across filesystems if it must.
-
-    A rename is atomic and is tried first. When the two sides sit on
-    different filesystems the kernel refuses, and the part is copied and
-    then removed. The result is the same either way.
-    """
+    """Move a file or a folder. Supports cross filesystems operation."""
     try:
         os.rename(source, target)
     except OSError as error:
@@ -196,14 +185,7 @@ def trash_session(
     reason: str | None = None,
     now: datetime | None = None,
 ) -> TrashEntry:
-    """Move every part of a session into a new Trash entry and return it.
-
-    A live session is refused. The check is made fresh, under the lock, so
-    a session that started running since the list was read is still safe.
-
-    The manifest is written before the first part moves. If the move stops
-    half way, the manifest still says where every part belongs.
-    """
+    """Move session into Trash entry and return it."""
     with held_lock(settings):
         live = find_live(settings).get(session.id)
         if live is not None:
@@ -212,6 +194,8 @@ def trash_session(
         if not parts:
             raise SessionNotFound(session.id)
         moment = (now or datetime.now(timezone.utc)).replace(microsecond=0)
+        if moment.tzinfo is None:
+            moment = moment.astimezone()
         try:
             entry_dir = _make_entry_dir(settings, session.id, moment)
         except OSError as error:
@@ -238,3 +222,127 @@ def trash_session(
             except OSError as error:
                 raise TrashFailed(session.id, part.original, error) from error
         return entry
+
+
+def read_entry(entry_dir: Path) -> TrashEntry | None:
+    """The entry in a folder under the Trash, or None it is trash folder one."""
+    try:
+        with open(entry_dir / MANIFEST_NAME, "rb") as handle:
+            record = json.load(handle)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(record, dict) or record.get("version") != MANIFEST_VERSION:
+        return None
+    try:
+        return TrashEntry.from_dict(record, entry_dir)
+    except ValueError:
+        return None
+
+
+def list_entries(settings: Settings) -> list[TrashEntry]:
+    """Every entry in the Trash, newest first."""
+    try:
+        found = os.scandir(settings.trash_dir)
+    except OSError:
+        return []
+    entries = []
+    with found:
+        for item in found:
+            if not item.is_dir(follow_symlinks=False):
+                continue
+            entry = read_entry(Path(item.path))
+            if entry is not None:
+                entries.append(entry)
+    entries.sort(key=lambda entry: (entry.trashed_at, entry.id), reverse=True)
+    return entries
+
+
+def total_size(settings: Settings) -> int:
+    """Bytes the Trash holds, over every entry."""
+    return sum(entry.size for entry in list_entries(settings))
+
+
+def _entry_dir(settings: Settings, entry: TrashEntry) -> Path:
+    """The folder of an entry, from its id. An id is one folder name, never a path."""
+    if not entry.id or entry.id in (".", "..") or "/" in entry.id:
+        raise TrashEntryNotFound(entry.id)
+    return settings.trash_dir / entry.id
+
+
+def _climbs(path: Path) -> bool:
+    """True when a path climbs with ``..``, so it may point outside where it seems to."""
+    return ".." in path.parts
+
+
+def _check_part(settings: Settings, entry: TrashEntry, part: Part) -> tuple[Path, Path]:
+    """Checks where a part sits in the entry and where it goes back to.
+
+    A manifest is a plain file and may have been edited, so its paths are not trusted.
+    """
+    stored = entry.path / part.stored
+    if (
+        part.stored.is_absolute()
+        or _climbs(part.stored)
+        or part.stored.parts[:1] != (CLAUDE_SUBDIR,)
+    ):
+        raise TrashEntryDamaged(entry.id, stored, "a part is stored outside the entry")
+    target = part.original
+    if (
+        not target.is_absolute()
+        or _climbs(target)
+        or not target.is_relative_to(settings.claude_dir)
+        or target == settings.claude_dir
+    ):
+        raise TrashEntryDamaged(
+            entry.id, target, "a part belongs outside Claude Code's folder"
+        )
+    if not os.path.lexists(stored):
+        raise TrashEntryDamaged(entry.id, stored, "a part is missing from the entry")
+    return stored, target
+
+
+def restore_entry(settings: Settings, entry: TrashEntry) -> TrashEntry:
+    """Put parts of an entry back where they came from and drop the Trash entry."""
+    with held_lock(settings):
+        current = read_entry(_entry_dir(settings, entry))
+        if current is None:
+            raise TrashEntryNotFound(entry.id)
+        moves: list[tuple[Path, Path]] = []
+        for part in current.parts:
+            stored, target = _check_part(settings, current, part)
+            if any(target == other for _, other in moves):
+                raise TrashEntryDamaged(current.id, target, "two parts share one place")
+            if os.path.lexists(target):
+                raise RestoreClash(current.id, target)
+            moves.append((stored, target))
+        for _stored, target in moves:
+            try:
+                target.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                raise RestoreFailed(current.id, target.parent, error) from error
+        for stored, target in moves:
+            try:
+                move(stored, target)
+            except OSError as error:
+                raise RestoreFailed(current.id, target, error) from error
+        try:
+            shutil.rmtree(current.path)
+        except OSError as error:
+            raise RestoreFailed(current.id, current.path, error) from error
+        return current
+
+
+def purge_entry(settings: Settings, entry: TrashEntry) -> TrashEntry:
+    """Remove one entry from the disk for good."""
+    with held_lock(settings):
+        current = read_entry(_entry_dir(settings, entry))
+        if current is None:
+            raise TrashEntryNotFound(entry.id)
+        try:
+            shutil.rmtree(current.path)
+        except OSError as error:
+            where = current.path
+            if error.filename and os.path.isabs(error.filename):
+                where = Path(error.filename)
+            raise PurgeFailed(current.id, where, error) from error
+        return current

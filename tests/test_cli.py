@@ -164,6 +164,28 @@ def test_list_no_longer_shows_a_trashed_session(
     assert f"no session matches '{gone}'" in err
 
 
+def test_list_shows_a_restored_session_with_the_same_data(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """List shows a restored session with the same data."""
+    sid = new_id()
+    fake.every_part(PROJECT, sid)
+    _code, before, _err = run(capsys, settings, "list", "--json")
+    _code, info_before, _err = run(capsys, settings, "info", sid, "--json")
+    store = SessionStore(settings)
+    entry = store.trash(sid)
+    _code, gone, _err = run(capsys, settings, "list", "--json")
+
+    store.restore(entry.id)
+    code, after, _err = run(capsys, settings, "list", "--json")
+    _code, info_after, _err = run(capsys, settings, "info", sid, "--json")
+
+    assert code == 0
+    assert json.loads(gone) == []
+    assert json.loads(after) == json.loads(before)
+    assert json.loads(info_after) == json.loads(info_before)
+
+
 def test_list_with_nothing_to_show(
     settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:
