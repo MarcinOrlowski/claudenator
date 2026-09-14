@@ -22,7 +22,13 @@ from conclaude.core.format import Formatter
 from conclaude.core.model import Session, SessionDetails
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore, projects_of
-from conclaude.tui.panes import DetailsPane, ProjectsPane, SessionsPane
+from conclaude.tui.panes import (
+    DetailsPane,
+    FilterBox,
+    FilterWanted,
+    ProjectsPane,
+    SessionsPane,
+)
 
 
 class MainScreen(Screen[None]):
@@ -38,28 +44,49 @@ class MainScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
-            yield ProjectsPane()
+            with Vertical(id="left"):
+                projects = ProjectsPane()
+                yield projects
+                yield FilterBox(projects)
             with Vertical(id="right"):
-                yield SessionsPane(self.fmt)
+                sessions = SessionsPane(self.fmt)
+                yield sessions
+                yield FilterBox(sessions)
                 yield DetailsPane(self.fmt)
         yield Footer()
 
     def on_mount(self) -> None:
-        """Size the projects pane from the settings, fill and focus."""
+        """Size the left side and order the table from the settings, fill and focus."""
         settings = self.store.settings
-        projects = self.query_one(ProjectsPane)
-        projects.styles.width = f"{settings.projects_pane_share:.0%}"
-        projects.styles.min_width = settings.projects_pane_min_width
-        projects.styles.max_width = settings.projects_pane_max_width
+        left = self.query_one("#left")
+        left.styles.width = f"{settings.projects_pane_share:.0%}"
+        left.styles.min_width = settings.projects_pane_min_width
+        left.styles.max_width = settings.projects_pane_max_width
+        self.query_one(SessionsPane).sort_by(
+            settings.sort_column, settings.sort_descending
+        )
         self.load()
-        projects.focus()
+        self.query_one(ProjectsPane).focus()
 
     def load(self) -> None:
-        """Read every session and fills the panes."""
+        """Read every session data and fills the panes."""
+        self.store.reload()
         self._sessions = self.store.list_sessions()
         self._by_id = {session.id: session for session in self._sessions}
         self._details.clear()
         self.query_one(ProjectsPane).show(projects_of(self._sessions))
+
+    def action_reload(self) -> None:
+        """Pseudo-global ``r`` key on any pane."""
+        self.load()
+
+    def on_filter_wanted(self, event: FilterWanted) -> None:
+        """A pane asked for its filter box."""
+        box = self.query_one(f"#{event.pane.id}-filter", FilterBox)
+        if event.clear:
+            box.action_cancel()
+        else:
+            box.open()
 
     def on_projects_pane_chosen(self, event: ProjectsPane.Chosen) -> None:
         """List sessions of highlighted project."""
