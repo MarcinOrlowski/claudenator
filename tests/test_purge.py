@@ -58,6 +58,24 @@ def test_purging_removes_the_entry_and_nothing_else(
     assert [session.id for session in store.list_sessions()] == [alive]
 
 
+def test_purge_of_removes_an_entry_in_hand_and_lists_nothing(
+    fake: FakeClaude, store: SessionStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``purge_of`` removes an entry already in hand. The Trash is not listed again."""
+    sid = new_id()
+    fake.every_part(PROJECT, sid)
+    entry = store.trash(sid)
+    monkeypatch.setattr(
+        store, "list_trash", lambda: pytest.fail("the Trash was listed again")
+    )
+
+    purged = store.purge_of(entry)
+
+    assert purged == entry
+    assert not entry.path.exists()
+    assert SessionStore(store.settings).list_trash() == []
+
+
 def test_a_purged_link_does_not_touch_its_target(
     fake: FakeClaude, store: SessionStore, settings: Settings
 ) -> None:

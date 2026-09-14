@@ -199,11 +199,34 @@ class SessionStore:
         Raises ``RestoreClash`` when something sits in target folder
         and ``TrashEntryDamaged`` when the entry cannot be restored.
         """
-        return restore_entry(self.settings, self.find_entry(wanted))
+        return self.restore_of(self.find_entry(wanted))
+
+    def restore_of(self, entry: TrashEntry) -> TrashEntry:
+        """Restores specified entry from the Trash.
+
+        Raises ``RestoreClash`` when something sits in the target location, and
+        ``TrashEntryDamaged`` when the entry cannot be restored.
+        """
+        return restore_entry(self.settings, entry)
+
+    def session_of(self, entry: TrashEntry) -> Session | None:
+        """The session a restored entry put back."""
+        transcripts = [
+            part.original for part in entry.parts if part.kind == "transcript"
+        ]
+        if not transcripts:
+            return None
+        transcript = transcripts[0]
+        live = find_live(self.settings).get(entry.session_id)
+        return self._load(transcript.parent.name, entry.session_id, transcript, live)
 
     def purge(self, wanted: str) -> TrashEntry:
         """Remove one Trash entry from the disk for good. Returns what went."""
-        return purge_entry(self.settings, self.find_entry(wanted))
+        return self.purge_of(self.find_entry(wanted))
+
+    def purge_of(self, entry: TrashEntry) -> TrashEntry:
+        """Remove a Trash entry for good."""
+        return purge_entry(self.settings, entry)
 
     def _load(
         self,

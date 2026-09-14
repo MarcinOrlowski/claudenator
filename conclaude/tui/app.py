@@ -13,18 +13,23 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
-from textual.screen import Screen
-from textual.widgets import Footer
+from textual.screen import Screen, ScreenResultType
+from textual.widgets import Footer, Header
 
 from conclaude.core.errors import ConclaudeError
 from conclaude.core.format import Formatter
-from conclaude.core.model import Session, SessionDetails
+from conclaude.core.model import Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore, projects_of
 from conclaude.tui.panes import (
+    DaysPane,
     DetailsPane,
+    EntriesPane,
+    EntryPane,
     FilterBox,
     FilterWanted,
     ProjectsPane,
@@ -32,18 +37,55 @@ from conclaude.tui.panes import (
 )
 
 
-class MainScreen(Screen[None]):
-    """The three panes and the footer."""
+@dataclass(frozen=True)
+class TrashVisit:
+    """What a stay in Trash mode hands back when the panes switch to the sessions."""
+
+    entries: list[TrashEntry]
+    restored: list[Session]
+
+
+class PaneScreen(Screen[ScreenResultType]):
+    """Three panes under the header"""
 
     def __init__(self, store: SessionStore, fmt: Formatter) -> None:
         super().__init__()
         self.store = store
         self.fmt = fmt
+
+    def on_filter_wanted(self, event: FilterWanted) -> None:
+        """A pane asked for its filter box."""
+        box = self.query_one(f"#{event.pane.id}-filter", FilterBox)
+        if event.clear:
+            box.action_cancel()
+        else:
+            box.open()
+
+    def _size_left(self) -> None:
+        """Size the left side from the settings."""
+        settings = self.store.settings
+        left = self.query_one("#left")
+        left.styles.width = f"{settings.projects_pane_share:.0%}"
+        left.styles.min_width = settings.projects_pane_min_width
+        left.styles.max_width = settings.projects_pane_max_width
+
+    def _show_trash_total(self, entries: list[TrashEntry]) -> None:
+        """The header says what the Trash holds now."""
+        self.app.sub_title = self.fmt.trash_line(entries)
+
+
+class MainScreen(PaneScreen[None]):
+    """The projects, the sessions of one of them, and one session in full."""
+
+    def __init__(self, store: SessionStore, fmt: Formatter) -> None:
+        super().__init__(store, fmt)
         self._sessions: list[Session] = []
         self._by_id: dict[str, Session] = {}
         self._details: dict[str, SessionDetails] = {}
+        self._trash: list[TrashEntry] = []
 
     def compose(self) -> ComposeResult:
+        yield Header()
         with Horizontal(id="body"):
             with Vertical(id="left"):
                 projects = ProjectsPane()
@@ -59,10 +101,7 @@ class MainScreen(Screen[None]):
     def on_mount(self) -> None:
         """Size the left side and order the table from the settings, fill and focus."""
         settings = self.store.settings
-        left = self.query_one("#left")
-        left.styles.width = f"{settings.projects_pane_share:.0%}"
-        left.styles.min_width = settings.projects_pane_min_width
-        left.styles.max_width = settings.projects_pane_max_width
+        self._size_left()
         self.query_one(SessionsPane).sort_by(
             settings.sort_column, settings.sort_descending
         )
@@ -70,24 +109,22 @@ class MainScreen(Screen[None]):
         self.query_one(ProjectsPane).focus()
 
     def load(self) -> None:
-        """Read every session data and fills the panes."""
+        """Read every session and the Trash again, and fill the panes."""
         self.store.reload()
         self._sessions = self.store.list_sessions()
         self._by_id = {session.id: session for session in self._sessions}
         self._details.clear()
+        self._trash = self.store.list_trash()
+        self._show_trash_total(self._trash)
         self.query_one(ProjectsPane).show(projects_of(self._sessions))
 
     def action_reload(self) -> None:
         """Pseudo-global ``r`` key on any pane."""
         self.load()
 
-    def on_filter_wanted(self, event: FilterWanted) -> None:
-        """A pane asked for its filter box."""
-        box = self.query_one(f"#{event.pane.id}-filter", FilterBox)
-        if event.clear:
-            box.action_cancel()
-        else:
-            box.open()
+    def action_trash_mode(self) -> None:
+        """The t key: the panes switch to the Trash."""
+        self.app.push_screen(TrashScreen(self.store, self.fmt), self._back_from_trash)
 
     def on_projects_pane_chosen(self, event: ProjectsPane.Chosen) -> None:
         """List sessions of highlighted project."""
@@ -114,11 +151,26 @@ class MainScreen(Screen[None]):
         """
         session = event.session
         try:
-            self.store.trash_of(session)
+            entry = self.store.trash_of(session)
         except ConclaudeError as error:
             self.notify(str(error), title="Not trashed", severity="error")
             return
+        self._trash.insert(0, entry)
+        self._show_trash_total(self._trash)
         self._forget(session)
+
+    def _back_from_trash(self, visit: TrashVisit | None) -> None:
+        """The panes are back from the Trash."""
+        if visit is None:
+            return
+        self._trash = visit.entries
+        self._show_trash_total(self._trash)
+        if not visit.restored:
+            return
+        for session in visit.restored:
+            self._by_id[session.id] = session
+        self._sessions = list(self._by_id.values())
+        self.query_one(ProjectsPane).show(projects_of(self._sessions))
 
     def _forget(self, session: Session) -> None:
         """Take one session off the screen, in place.
@@ -142,6 +194,101 @@ class MainScreen(Screen[None]):
             found = self.store.details_of(session)
             self._details[session.id] = found
         return found
+
+
+class TrashScreen(PaneScreen[TrashVisit]):
+    """Trash mode: the days, the entries of one of them, and one entry in full."""
+
+    def __init__(self, store: SessionStore, fmt: Formatter) -> None:
+        super().__init__(store, fmt)
+        self._entries: list[TrashEntry] = []
+        self._by_id: dict[str, TrashEntry] = {}
+        self._restored: list[Session] = []
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Horizontal(id="body"):
+            with Vertical(id="left"):
+                yield DaysPane(self.fmt)
+            with Vertical(id="right"):
+                entries = EntriesPane(self.fmt)
+                yield entries
+                yield FilterBox(entries)
+                yield EntryPane(self.fmt)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Size the left side, fill, and focus the entries: that is where the keys are."""
+        self._size_left()
+        self.load()
+        self.query_one(EntriesPane).focus()
+
+    def load(self) -> None:
+        """Read the Trash again and fill the panes."""
+        self._entries = self.store.list_trash()
+        self._by_id = {entry.id: entry for entry in self._entries}
+        self._show_trash_total(self._entries)
+        self.query_one(DaysPane).show(self._entries)
+
+    def action_reload(self) -> None:
+        """Pseudo-global ``r`` key on any pane."""
+        self.load()
+
+    def action_sessions_mode(self) -> None:
+        """The t key: the panes switch back to the sessions."""
+        self.dismiss(TrashVisit(self._entries, self._restored))
+
+    def on_days_pane_chosen(self, event: DaysPane.Chosen) -> None:
+        """List the entries that went in on the highlighted day."""
+        if event.day is None:
+            shown = self._entries
+        else:
+            shown = [
+                e for e in self._entries if self.fmt.day(e.trashed_at) == event.day
+            ]
+        self.query_one(EntriesPane).show(shown)
+
+    def on_days_pane_opened(self) -> None:
+        """Enter on a day moves the user into its entries."""
+        self.query_one(EntriesPane).focus()
+
+    def on_entries_pane_chosen(self, event: EntriesPane.Chosen) -> None:
+        """The cursor sits on an entry."""
+        entry = self._by_id.get(event.entry_id) if event.entry_id else None
+        self.query_one(EntryPane).show(entry)
+
+    def on_entries_pane_restore_wanted(self, event: EntriesPane.RestoreWanted) -> None:
+        """The ``u`` key: the entry goes back."""
+        entry = event.entry
+        try:
+            self.store.restore_of(entry)
+        except ConclaudeError as error:
+            self.notify(str(error), title="Not restored", severity="error")
+            return
+        session = self.store.session_of(entry)
+        if session is not None:
+            self._restored.append(session)
+        self._forget(entry)
+
+    def on_entries_pane_purge_wanted(self, event: EntriesPane.PurgeWanted) -> None:
+        """The ``x`` key: the entry is gone for good."""
+        entry = event.entry
+        try:
+            self.store.purge_of(entry)
+        except ConclaudeError as error:
+            self.notify(str(error), title="Not purged", severity="error")
+            return
+        self._forget(entry)
+
+    def _forget(self, entry: TrashEntry) -> None:
+        """Take one entry off the screen"""
+        self._entries = [e for e in self._entries if e.id != entry.id]
+        self._by_id.pop(entry.id, None)
+        self._show_trash_total(self._entries)
+        self.query_one(EntriesPane).drop(entry.id)
+        day = self.fmt.day(entry.trashed_at)
+        if not any(self.fmt.day(e.trashed_at) == day for e in self._entries):
+            self.query_one(DaysPane).show(self._entries)
 
 
 class ConclaudeApp(App[None]):

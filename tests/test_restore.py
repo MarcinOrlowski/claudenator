@@ -20,6 +20,7 @@ import re
 import shutil
 import tempfile
 import threading
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -82,6 +83,49 @@ def test_a_restored_session_has_the_same_data_as_before(
     [after] = store.list_sessions()
     assert after == before
     assert store.details(sid).session == before
+
+
+def test_restore_of_puts_back_an_entry_in_hand_and_session_of_reads_only_that_session(
+    fake: FakeClaude, store: SessionStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``restore_of`` puts back an entry already in hand. ``session_of`` reads its session
+    back from the disk. Neither lists the Trash or the sessions again.
+    """
+    sid = new_id()
+    fake.every_part(PROJECT, sid)
+    [before] = store.list_sessions()
+    entry = store.trash_of(before)
+    monkeypatch.setattr(
+        store, "list_trash", lambda: pytest.fail("the Trash was listed again")
+    )
+    monkeypatch.setattr(
+        store, "list_sessions", lambda: pytest.fail("the session list was read again")
+    )
+
+    restored = store.restore_of(entry)
+    after = store.session_of(entry)
+
+    assert restored == entry
+    assert after == before
+    assert not entry.path.exists()
+
+
+def test_session_of_is_none_while_the_transcript_is_not_on_the_disk(
+    fake: FakeClaude, store: SessionStore
+) -> None:
+    """``session_of`` is None while the transcript is not on the disk, or the entry has none."""
+    sid = new_id()
+    fake.every_part(PROJECT, sid)
+    entry = store.trash(sid)
+    assert store.session_of(entry) is None
+
+    store.restore_of(entry)
+    no_transcript = replace(
+        entry, parts=tuple(part for part in entry.parts if part.kind != "transcript")
+    )
+
+    assert store.session_of(entry) is not None
+    assert store.session_of(no_transcript) is None
 
 
 def test_an_occupied_place_stops_the_restore_before_anything_moves(

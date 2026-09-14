@@ -18,29 +18,30 @@ Screen {
     height: 1fr;
 }
 
-ProjectsPane, SessionsPane, DetailsPane, FilterBox {
+ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane, FilterBox {
     background: $surface;
     border: round $border-blurred;
     border-title-color: $text-muted;
 }
 
-ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus, FilterBox:focus {
+ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus,
+DaysPane:focus, EntriesPane:focus, EntryPane:focus, FilterBox:focus {
     border: round $border;
     border-title-color: $text;
 }
 
-ProjectsPane {
+ProjectsPane, DaysPane {
     width: 1fr;
     height: 1fr;
     text-wrap: nowrap;
     text-overflow: ellipsis;
 }
 
-SessionsPane {
+SessionsPane, EntriesPane {
     height: 1fr;
 }
 
-DetailsPane {
+DetailsPane, EntryPane {
     height: auto;
     max-height: 50%;
     padding: 0 1;
