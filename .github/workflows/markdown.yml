@@ -1,11 +1,8 @@
 ##################################################################################
 #
-# @author    Marcin Orlowski <mail (#) marcinOrlowski (.) com>
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
 #
 ##################################################################################
-#
-# Runs markdownlint on changed *.md files only
-#
 
 name: "Markdown Lint"
 
@@ -16,59 +13,34 @@ on:
     branches: [ master, dev ]
 
 jobs:
-  analyze_sources:
-    name: "Is there any source code to work on?"
-    runs-on: ubuntu-latest
+  markdown_lint:
+    name: "Markdown linter"
+    runs-on: ${{ matrix.os }}
 
-    outputs:
-      # Export 'filter' step check result so next step can use it.
-      run_action: ${{ steps.filter.outputs.src }}
-      # These are source files matching our filter that are affected by the PR.
-      changed_files: ${{ steps.filter.outputs.src_files }}
-
-    steps:
-        # https://github.com/marketplace/actions/checkout
-      - name: "Checkout sources"
-        uses: actions/checkout@v4
-
-        # https://github.com/marketplace/actions/paths-changes-filter
-      - name: "Look for changes that matters for us..."
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          # Token is optional for public repos, but required for private repos
-          token: ${{ secrets.GITHUB_TOKEN }}
-          list-files: 'escape'
-          filters: |
-            src:
-              - '.claude'
-              - 'docs/*.md'
-              - 'project/*.md'
-              - 'README.md'
-
-      - name: "Will action step be run?"
-        run: |
-          found="NO"
-          [[ ${{ steps.filter.outputs.src }} == 'true' ]] && found="YES"
-          echo "run_action=${found}" >> $GITHUB_OUTPUT
-          echo -e "\n****************************************\n"
-          echo "${found}"
-          echo -e "****************************************"
-
-
-  mdlint:
-    # Will run only if analyze_sources determined it is needed.
-    needs: analyze_sources
-    if: needs.analyze_sources.outputs.run_action == 'true'
-
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
 
     steps:
       # https://github.com/marketplace/actions/checkout
-      - name: "Checkout repository..."
+      - name: "Checkout sources"
         uses: actions/checkout@v4
 
-      - name: "Running markdown linter on changed files..."
-        run: |
-          echo "Linting changed files: ${{ needs.analyze_sources.outputs.changed_files }}"
-          npx markdownlint-cli --config .markdownlint.yaml ${{ needs.analyze_sources.outputs.changed_files }}
+      # https://github.com/marketplace/actions/paths-changes-filter
+      - name: "Look for changed doc related files..."
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            docs:
+              - '**/*.md'
+
+      # https://github.com/marketplace/actions/my-markdown-linter
+      - name: "Running markdown linter..."
+        uses: ruzickap/action-my-markdown-linter@v1
+        if: steps.filter.outputs.docs == 'true'
+        with:
+          config_file: .markdownlint.yaml
+          # LICENSE is externally sourced and we're not going to fix it.
+          exclude: |
+            LICENSE.md
