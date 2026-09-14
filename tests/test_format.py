@@ -44,7 +44,7 @@ def test_absolute_shows_local_time_to_the_second() -> None:
 
 def test_absolute_pattern_comes_from_the_settings() -> None:
     """Absolute pattern comes from the settings."""
-    settings = Settings(time_pattern="%Y-%m-%dT%H:%M:%S")
+    settings = Settings(time_format="absolute", time_pattern="%Y-%m-%dT%H:%M:%S")
 
     assert "T" in Formatter(settings, now=NOW).timestamp(NOW)
 

@@ -78,7 +78,8 @@ def test_list_table(
     assert code == 0
     assert lines[0].split() == ["ID", "LAST", "USED", "SIZE", "TITLE", "PROJECT"]
     assert lines[1].startswith(sid[:8])
-    assert re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", lines[1])
+    # The default time format is relative, and the transcript was written just now
+    assert re.search(r"just now|\d+s ago", lines[1])
     assert "Hello" in lines[1]
     assert lines[1].endswith(PROJECT)
     assert lines[-1].startswith("1 session,")
