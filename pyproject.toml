@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "conclaude"
+dynamic = ["version"]
+description = "Look at Claude Code sessions and remove the ones you do not want."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.10"
+authors = [{ name = "Marcin Orlowski", email = "mail@marcinOrlowski.com" }]
+keywords = ["claude", "claude-code", "sessions", "tui", "textual"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Utilities",
+]
+dependencies = ["textual>=8,<9"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]
+
+[project.urls]
+Homepage = "https://github.com/MarcinOrlowski/conclaude"
+Issues = "https://github.com/MarcinOrlowski/conclaude/issues"
+
+[project.scripts]
+conclaude = "conclaude.cli.main:main"
+
+[tool.hatch.version]
+path = "conclaude/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["conclaude"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["conclaude", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+target-version = ["py310", "py311", "py312", "py313", "py314"]

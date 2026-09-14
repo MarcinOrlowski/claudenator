@@ -1,0 +1,54 @@
+##################################################################################
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+#
+##################################################################################
+
+name: "Unit tests"
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master, dev ]
+
+jobs:
+  unittests:
+    name: "Testing"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        # quotes are needed as YAML treats unquoted versions as floats and
+        # drops trailing zeros (i.e "3.10" => 3.10, 3.10 => 3.1),
+        # so quotes are required.
+        python: [ "3.12", "3.13", "3.14" ]
+
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: "Checkout sources"
+        uses: actions/checkout@v4
+
+      # https://github.com/marketplace/actions/paths-changes-filter
+      - name: "Look for changed files..."
+        uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            srcs:
+              - '**/*.py'
+
+      - name: "Setup Python"
+        if: steps.filter.outputs.srcs == 'true'
+        uses: actions/setup-python@master
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: "Installing dependencies..."
+        if: steps.filter.outputs.srcs == 'true'
+        run: pip install -e ".[dev]"
+
+      - name: "Running unit tests..."
+        if: steps.filter.outputs.srcs == 'true'
+        run: python -m unittest discover tests
