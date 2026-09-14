@@ -1,7 +1,14 @@
-"""Builds a Claude Code data folder in a temporary directory.
-
-Every test drives the store through a ``Settings`` object that points at
-folders made here. Nothing is mocked or patched.
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
 """
 
 from __future__ import annotations
@@ -24,12 +31,7 @@ Snapshot = dict[str, tuple[Any, ...]]
 
 
 def snapshot(root: Path) -> Snapshot:
-    """Every path below a folder, with enough to prove it did not change.
-
-    Symlinks are recorded as links and never followed. Keys are relative to
-    ``root`` with ``/`` separators, so two snapshots of different roots can
-    be compared part by part.
-    """
+    """Every path below a folder, with"""
     found: Snapshot = {}
     if not root.exists():
         return found
@@ -51,10 +53,7 @@ def snapshot(root: Path) -> Snapshot:
 
 
 def encode_project(path: str) -> str:
-    """The lossy folder name Claude Code makes from a project path.
-
-    Only the test harness encodes. The tool itself never encodes or decodes.
-    """
+    """The lossy folder name Claude makes from a project path."""
     return re.sub(r"[^a-zA-Z0-9]", "-", path)
 
 
@@ -64,14 +63,14 @@ def new_id() -> str:
 
 
 def dump_line(record: dict[str, Any]) -> bytes:
-    """One record as Claude Code writes it: one JSON object, then a newline."""
+    """One record as Claude writes it: one JSON object, then a newline."""
     return (json.dumps(record, ensure_ascii=False) + "\n").encode("utf-8")
 
 
 def write_records(path: Path, records: Iterable[dict[str, Any] | bytes]) -> Path:
     """Write records to a transcript.
 
-    A ``bytes`` item is written as it is, so a test can plant a bad line.
+    A ``bytes`` item is written as it is, so a test can plant some shit too.
     """
     with open(path, "wb") as handle:
         for record in records:
@@ -91,10 +90,10 @@ def session_records(
     started: str = STARTED,
     copied_from: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Records shaped like the ones Claude Code writes, in the order it writes them.
+    """Records shaped like the ones CC writes, in the order it writes them.
 
     The first two message records are injected boilerplate, as in a real
-    transcript. The human message comes after them. With ``copied_from`` set,
+    transcript. The user message comes after them. With ``copied_from`` set,
     every message record carries the parent's id in ``session_id``, which is
     how a fork looks on the disk.
     """
@@ -289,9 +288,7 @@ class FakeClaude:
         folder.mkdir(parents=True, exist_ok=True)
         return folder
 
-    # The small parts of a session. Each is named after the session id the
-    # way Claude Code names it, and each holds a little content of its own
-    # so a test can tell it apart after a move.
+    # The small parts of a session. Each is named after the session id as CC does.
 
     def _folder(self, where: str, name: str, files: dict[str, bytes]) -> Path:
         folder = self.root / where / name

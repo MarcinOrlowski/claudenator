@@ -1,4 +1,15 @@
-"""The one place that holds every default."""
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
+"""
 
 from __future__ import annotations
 
@@ -8,11 +19,7 @@ from pathlib import Path
 
 
 def default_claude_dir() -> Path:
-    """Where Claude Code keeps its data.
-
-    Claude Code itself honours ``CLAUDE_CONFIG_DIR``, so we look in the same
-    place it writes to.
-    """
+    """Where Claude Code keeps its data (honor CC's env)."""
     override = os.environ.get("CLAUDE_CONFIG_DIR")
     if override:
         return Path(override).expanduser()
@@ -30,7 +37,6 @@ def default_data_dir() -> Path:
 class Settings:
     """Every choice the tool makes, with its default."""
 
-    # The three roots. Every file location in the core layer derives from these.
     claude_dir: Path = field(default_factory=default_claude_dir)
     data_dir: Path = field(default_factory=default_data_dir)
     proc_dir: Path = Path("/proc")
@@ -48,7 +54,7 @@ class Settings:
     min_height: int = 8
     confirm_delete: bool = False
 
-    # How text is shown to a human. See ``format.Formatter``.
+    # How to format dates. See ``format.Formatter``.
     time_format: str = "both"
     time_pattern: str = "%Y-%m-%d %H:%M:%S"
 
@@ -58,8 +64,8 @@ class Settings:
     tail_bytes_max: int = 4 * 1024 * 1024
     title_max_length: int = 100
 
-    # The Trash. An entry folder is named ``<when>_<session id>``, and this
-    # is the pattern for ``<when>``. Only characters a folder name allows.
+    # The Trash. An entry folder is named ``<stamp>_<session id>``, and this
+    # is the pattern for ``<stamp>``.
     trash_name_pattern: str = "%Y-%m-%dT%H-%M-%S"
 
     @property
@@ -74,7 +80,7 @@ class Settings:
 
     @property
     def history_file(self) -> Path:
-        """Claude Code's prompt history. Read as a fallback, never written."""
+        """Claude Code's prompt history. Read-only. As a fallback."""
         return self.claude_dir / "history.jsonl"
 
     # The small folders Claude Code names after a session id. Each holds one

@@ -1,0 +1,42 @@
+/* Every colour is a theme variable. Never a literal one, so every theme fits. */
+
+Screen {
+    layout: vertical;
+}
+
+#body {
+    height: 1fr;
+}
+
+#right {
+    width: 1fr;
+    height: 1fr;
+}
+
+ProjectsPane, SessionsPane, DetailsPane {
+    background: $surface;
+    border: round $border-blurred;
+    border-title-color: $text-muted;
+}
+
+ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus {
+    border: round $border;
+    border-title-color: $text;
+}
+
+/* The width comes from the settings; the screen sets it when it mounts. */
+ProjectsPane {
+    height: 1fr;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+SessionsPane {
+    height: 1fr;
+}
+
+DetailsPane {
+    height: auto;
+    max-height: 50%;
+    padding: 0 1;
+}
