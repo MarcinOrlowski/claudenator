@@ -50,6 +50,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="DIR",
         help=f"conclaude's own folder for the Trash and the cache (default: {defaults.data_dir})",
     )
+    # The process table. Only a test points this anywhere but /proc.
+    parser.add_argument("--proc-dir", type=Path, metavar="DIR", help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
 
     list_parser = commands.add_parser("list", help="list every session")
@@ -70,6 +72,8 @@ def settings_from(args: argparse.Namespace) -> Settings:
         settings.claude_dir = args.claude_dir.expanduser()
     if args.data_dir is not None:
         settings.data_dir = args.data_dir.expanduser()
+    if args.proc_dir is not None:
+        settings.proc_dir = args.proc_dir.expanduser()
     return settings
 
 
@@ -137,7 +141,7 @@ def _info_lines(details: SessionDetails, fmt: Formatter) -> list[tuple[str, str]
         lines.append(
             ("Inherited", f"{fmt.size(details.inherited_bytes)} came from the parent")
         )
-    lines.append(("Live", "yes" if session.live else "no"))
+    lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
     lines.append(("Damaged", "yes" if session.damaged else "no"))
     return lines
 

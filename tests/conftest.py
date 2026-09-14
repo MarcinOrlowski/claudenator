@@ -8,7 +8,7 @@ import pytest
 
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
-from tests.fabricate import FakeClaude, make_settings
+from tests.fabricate import FakeClaude, FakeProc, make_settings
 
 
 @pytest.fixture
@@ -21,6 +21,12 @@ def settings(tmp_path: Path) -> Settings:
 def fake(settings: Settings) -> FakeClaude:
     """An empty Claude Code folder at ``settings.claude_dir``."""
     return FakeClaude(settings.claude_dir)
+
+
+@pytest.fixture
+def proc(settings: Settings) -> FakeProc:
+    """An empty process table at ``settings.proc_dir``."""
+    return FakeProc(settings.proc_dir)
 
 
 @pytest.fixture

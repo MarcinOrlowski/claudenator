@@ -9,7 +9,7 @@ import pytest
 
 from conclaude.cli.main import main
 from conclaude.core.settings import Settings
-from tests.fabricate import FakeClaude, new_id, session_records
+from tests.fabricate import FakeClaude, FakeProc, new_id, session_records
 
 PROJECT = "/p/x"
 
@@ -17,8 +17,16 @@ PROJECT = "/p/x"
 def run(
     capsys: pytest.CaptureFixture[str], settings: Settings, *argv: str
 ) -> tuple[int, str, str]:
-    """Run the command against the fake folder and capture what it printed."""
-    code = main(["--claude-dir", str(settings.claude_dir), *argv])
+    """Run the command against the fake folders and capture what it printed."""
+    roots = [
+        "--claude-dir",
+        str(settings.claude_dir),
+        "--data-dir",
+        str(settings.data_dir),
+        "--proc-dir",
+        str(settings.proc_dir),
+    ]
+    code = main([*roots, *argv])
     out, err = capsys.readouterr()
     return code, out, err
 
@@ -83,6 +91,56 @@ def test_list_marks_forks_and_damage(
     assert "[fork]" in rows[child[:8]]
     assert "[damaged]" in rows[broken[:8]]
     assert "[" not in rows[parent[:8]].split("  ", 3)[3].split(PROJECT)[0]
+
+
+def test_list_marks_live_sessions_and_uses_their_name(
+    fake: FakeClaude,
+    proc: FakeProc,
+    settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """List marks live sessions and uses their name."""
+    running, stale = new_id(), new_id()
+    fake.transcript(
+        PROJECT, running, session_records(running, PROJECT, custom_title="A")
+    )
+    fake.transcript(PROJECT, stale, session_records(stale, PROJECT, custom_title="B"))
+    fake.marker(100, running, 5000, name="dev:app-pts3")
+    fake.marker(200, stale, 6000, name="gone")
+    proc.stat(100, 5000)
+    proc.stat(200, 6001)
+
+    _code, out, _err = run(capsys, settings, "list")
+    _code, json_out, _err = run(capsys, settings, "list", "--json")
+
+    rows = {line[:8]: line for line in out.splitlines()[1:] if line.strip()}
+    assert "dev:app-pts3 [live]" in rows[running[:8]]
+    assert "B" in rows[stale[:8]]
+    assert "[live]" not in rows[stale[:8]]
+    by_id = {row["id"]: row for row in json.loads(json_out)}
+    assert by_id[running]["live"] is True
+    assert by_id[running]["pid"] == 100
+    assert by_id[running]["title_source"] == "live"
+    assert by_id[stale]["live"] is False
+    assert by_id[stale]["pid"] is None
+
+
+def test_info_shows_the_pid_of_a_live_session(
+    fake: FakeClaude,
+    proc: FakeProc,
+    settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Info shows the pid of a live session."""
+    sid = new_id()
+    fake.transcript(PROJECT, sid)
+    fake.marker(4242, sid, 36917)
+    proc.stat(4242, 36917)
+
+    code, out, _err = run(capsys, settings, "info", sid)
+
+    assert code == 0
+    assert "Live:        yes  (pid 4242)" in out
 
 
 def test_list_with_nothing_to_show(
