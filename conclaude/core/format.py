@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from conclaude.core.model import Session, SessionDetails, TrashEntry
@@ -20,6 +21,20 @@ from conclaude.core.settings import Settings
 
 TIME_FORMATS = ("absolute", "relative", "both")
 UNITS = (("y", 365 * 86400), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1))
+# A path is cut at these.
+SLASH = "/"
+
+
+def parts_that_fit(parts: Sequence[str], sep: str, room: int) -> int:
+    """How many of ``parts``, joined with ``sep`` from the first one, fit in ``room``."""
+    count = used = 0
+    for part in parts:
+        need = len(part) + (len(sep) if count else 0)
+        if used + need > room:
+            break
+        used += need
+        count += 1
+    return count
 
 
 class Formatter:
@@ -84,6 +99,55 @@ class Formatter:
                 return f"{value:.1f}{unit}"
             value /= 1024
         return f"{int(value)}B"
+
+    def path(self, path: str, width: int) -> str:
+        """A path in ``width`` columns. One too long is cut in the middle, at slashes.
+
+        Two paths that differ in their last part alone stay apart:
+        ``/home/u/dev/projects/app-one`` in 16 columns is ``/home/…/app-one``.
+        """
+        return self.cut(path, width, SLASH)
+
+    def title(self, title: str, width: int) -> str:
+        """A title in ``width`` columns. One too long is cut in the middle."""
+        width = max(width, 0)
+        if len(title) <= width:
+            return title
+        mark = self.settings.cut_mark
+        room = width - len(mark)
+        if room <= 0:
+            return title[-width:] if width else ""
+        head = int(room * self.settings.cut_head_share)
+        tail = room - head
+        return f"{title[:head]}{mark}{title[-tail:] if tail else ''}"
+
+    def cut(self, text: str, width: int, sep: str) -> str:
+        """``text`` in ``width`` cols. One too long is cut in the middle, at ``sep``."""
+        width = max(width, 0)
+        if len(text) <= width:
+            return text
+        mark = self.settings.cut_mark
+        parts = text.split(sep)
+        # Room for the text on both sides of the mark, the separators round it aside.
+        room = width - len(mark) - 2 * len(sep)
+        if len(parts) == 1 or len(parts[-1]) > room + len(sep):
+            keep = width - len(mark)
+            if keep <= 0:
+                return text[-width:] if width else ""
+            return mark + text[-keep:]
+        # The end first, up to its share. Then the start, in what is left. Then
+        # the end again, in case the start did not use all of its share.
+        share = int(room * self.settings.cut_head_share)
+        drop = len(parts) - max(parts_that_fit(parts[::-1], sep, room - share), 1)
+        tail = sep.join(parts[drop:])
+        first = parts_that_fit(parts[: drop - 1], sep, room - len(tail))
+        head = sep.join(parts[:first])
+        left = room - len(head) if first else room + len(sep)
+        drop = len(parts) - max(parts_that_fit(parts[:first:-1], sep, left), 1)
+        tail = sep.join(parts[drop:])
+        if not first:
+            return f"{mark}{sep}{tail}"
+        return f"{head}{sep}{mark}{sep}{tail}"
 
     def marks(self, session: Session) -> str:
         """The session state: live, fork, damaged."""

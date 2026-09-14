@@ -1438,6 +1438,213 @@ async def test_r_in_trash_mode_reads_the_trash_again_and_the_cursor_keeps_its_en
     )
 
 
+LONG = "/home/u/dev/projects/some-long-folder-name"
+
+
+def long_paths(fake: FakeClaude, count: int) -> list[tuple[str, str]]:
+    """``count`` projects with long paths that differ in their last part alone.
+
+    One session each, newest first. Each pair is the path and the session id.
+    """
+    projects = []
+    for number in range(count):
+        path, sid = f"{LONG}/app-{number:02d}", new_id()
+        records = session_records(sid, path, custom_title=f"T{number}")
+        fake.transcript(path, sid, records, mtime=9000 - number)
+        projects.append((path, sid))
+    return projects
+
+
+def column_width(table: DataTable, key: str) -> int:
+    """The columns the cells of one column have for their text."""
+    return next(c.width for c in table.columns.values() if c.key.value == key)
+
+
+async def test_a_long_project_path_is_cut_in_the_middle_and_keeps_its_end(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A long project path is cut in the middle, at the slashes, and keeps its end.
+
+    Two paths that differ in their last part alone stay apart. The id of the
+    line is still the whole path.
+    """
+    [(one, _a), (two, _b)] = long_paths(fake, 2)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        room = pane.scrollable_content_region.width
+        shown = prompts(app)
+        ids = [option.id for option in pane.options]
+        await pilot.press("down")
+        await pilot.pause()
+        chosen = pane.selected_path
+
+    assert 0 < room < len(one)
+    assert shown == [ALL_PROJECTS, fmt.path(one, room), fmt.path(two, room)]
+    assert shown[1].startswith("/home/") and shown[1].endswith("/app-00")
+    assert shown[2].endswith("/app-01")
+    assert settings.cut_mark in shown[1]
+    assert len(shown[1]) <= room
+    assert ids == [None, one, two]
+    assert chosen == one
+
+
+async def test_the_paths_follow_the_width_of_the_projects_pane(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The paths are written again when the pane gets wider. The highlight stays."""
+    [(one, _a), (two, b)] = long_paths(fake, 2)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        await pilot.press("down", "down")
+        await pilot.pause()
+        narrow = pane.scrollable_content_region.width, prompts(app)
+        await pilot.resize_terminal(220, WIDE[1])
+        await pilot.pause()
+        wide = pane.scrollable_content_region.width, prompts(app)
+        after = pane.selected_path, pane.highlighted, rows(app.query_one(SessionsPane))
+
+    assert narrow[0] < wide[0]
+    assert narrow[1] == [
+        ALL_PROJECTS,
+        fmt.path(one, narrow[0]),
+        fmt.path(two, narrow[0]),
+    ]
+    assert wide[1] == [ALL_PROJECTS, one, two]
+    assert after == (two, 2, [b])
+
+
+async def test_a_scrollbar_takes_its_columns_from_the_paths(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """When the list needs a scrollbar, the paths leave it its columns."""
+    projects = long_paths(fake, 30)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=(WIDE[0], 20)) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        scrollbar = pane.show_vertical_scrollbar
+        room = pane.scrollable_content_region.width
+        narrower = room < pane.content_region.width
+        shown = prompts(app)[1:]
+
+    assert scrollbar and narrower
+    assert shown == [fmt.path(path, room) for path, _ in projects]
+    assert all(len(line) <= room for line in shown)
+
+
+async def test_the_project_column_cuts_a_long_path_in_the_middle_too(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Project column of the sessions table cuts a long path the same way."""
+    [(one, a), (two, b)] = long_paths(fake, 2)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        width = column_width(table, "project")
+        cells = [str(table.get_cell(sid, "project")) for sid in (a, b)]
+
+    assert 0 < width < len(one)
+    assert cells == [fmt.path(one, width), fmt.path(two, width)]
+    assert cells[0].endswith("/app-00") and cells[1].endswith("/app-01")
+    assert settings.cut_mark in cells[0]
+
+
+async def test_the_trash_table_cuts_a_long_project_path_in_the_middle_too(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Project column of the Trash table cuts a long path the same way."""
+    [(one, a)] = long_paths(fake, 1)
+    entry = SessionStore(settings).trash(a)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        width = column_width(table, "project")
+        cell = str(table.get_cell(entry.id, "project"))
+
+    assert 0 < width < len(one)
+    assert cell == fmt.path(one, width)
+    assert cell.endswith("/app-00") and settings.cut_mark in cell
+
+
+TALE = (
+    "This session is being continued from a previous conversation "
+    "that ran out of context"
+)
+
+
+async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end_and_its_marks(
+    fake: FakeClaude, proc: FakeProc, settings: Settings
+) -> None:
+    """A long title is cut in the middle, by the character. Its end and its marks stay."""
+    one, two = new_id(), new_id()
+    fake.transcript(
+        "/p/a",
+        one,
+        session_records(one, "/p/a", custom_title=f"{TALE}, part one"),
+        mtime=3000,
+    )
+    fake.transcript(
+        "/p/a",
+        two,
+        session_records(two, "/p/a", custom_title=f"{TALE}, part two"),
+        mtime=2000,
+    )
+    fake.marker(100, two, 5000, name=f"{TALE}, part two")
+    proc.stat(100, 5000)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        width = column_width(table, "title")
+        cells = [str(table.get_cell(sid, "title")) for sid in (one, two)]
+
+    assert 0 < width < len(TALE)
+    assert cells == [
+        fmt.title(f"{TALE}, part one", width),
+        fmt.title(f"{TALE}, part two [live]", width),
+    ]
+    assert cells[0].endswith("part one") and cells[1].endswith("part two [live]")
+    assert settings.cut_mark in cells[0]
+
+
+async def test_the_trash_table_cuts_a_long_title_in_the_middle_too(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Title column of the Trash table cuts a long title the same way."""
+    sid = new_id()
+    fake.transcript(
+        "/p/a", sid, session_records(sid, "/p/a", custom_title=f"{TALE}, part one")
+    )
+    entry = SessionStore(settings).trash(sid)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        width = column_width(table, "title")
+        cell = str(table.get_cell(entry.id, "title"))
+
+    assert 0 < width < len(TALE)
+    assert cell == fmt.title(entry.title, width)
+    assert cell.endswith("part one") and settings.cut_mark in cell
+
+
 def test_the_stylesheet_names_no_literal_colour() -> None:
     """The stylesheet names no literal colour: only theme variables."""
     path = Path(conclaude.tui.app.__file__).with_name(ConclaudeApp.CSS_PATH)

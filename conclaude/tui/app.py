@@ -88,7 +88,7 @@ class MainScreen(PaneScreen[None]):
         yield Header()
         with Horizontal(id="body"):
             with Vertical(id="left"):
-                projects = ProjectsPane()
+                projects = ProjectsPane(self.fmt)
                 yield projects
                 yield FilterBox(projects)
             with Vertical(id="right"):

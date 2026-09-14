@@ -118,6 +118,93 @@ def test_day_is_the_local_calendar_day_in_the_pattern_the_settings_give() -> Non
     ) == NOW.astimezone().strftime("%d.%m.%Y")
 
 
+def test_a_path_that_fits_is_left_alone() -> None:
+    """A path that fits is left alone."""
+    fmt = Formatter(Settings())
+
+    assert fmt.path("/home/u/dev/app", 15) == "/home/u/dev/app"
+    assert fmt.path("/home/u/dev/app", 40) == "/home/u/dev/app"
+
+
+def test_a_long_path_is_cut_in_the_middle_at_the_slashes_and_its_end_stays() -> None:
+    """A long path is cut in the middle, at the slashes. Its end always stays whole.
+
+    So two paths that differ in their last part alone stay apart.
+    """
+    fmt = Formatter(Settings())
+
+    assert fmt.path("foo/bar/long/long2/other/long", 12) == "foo/…/long"
+    assert fmt.path("/home/carlos/dev/projects/claude-sessions", 30) == (
+        "/home/carlos/…/claude-sessions"
+    )
+    assert fmt.path("/home/u/dev/projects/app-one", 16) == "/home/…/app-one"
+    assert fmt.path("/home/u/dev/projects/app-two", 16) == "/home/…/app-two"
+
+
+def test_the_end_takes_the_room_the_start_leaves() -> None:
+    """The end takes the room the start leaves unused."""
+    fmt = Formatter(Settings())
+
+    assert fmt.path("verylonghead/aaaa/bbbb/cccc/end", 20) == "…/aaaa/bbbb/cccc/end"
+
+
+def test_a_last_part_too_long_on_its_own_keeps_its_end() -> None:
+    """A last part too long for the room on its own keeps its end. So does a bare name."""
+    fmt = Formatter(Settings())
+
+    assert fmt.path("/a/b/averyverylongsegment", 10) == "…ngsegment"
+    assert fmt.path("averyverylongname", 8) == "…ongname"
+    assert fmt.path("/x/y", 1) == "y"
+    assert fmt.path("/x/y", 0) == ""
+
+
+def test_the_mark_and_the_share_of_the_start_come_from_the_settings() -> None:
+    """The mark and the share of the start come from the settings."""
+    path = "foo/bar/long/long2/other/long"
+
+    assert Formatter(Settings(cut_mark="...")).path(path, 12) == "foo/.../long"
+    assert (
+        Formatter(Settings(cut_head_share=0.0)).path(path, 20) == "…/long2/other/long"
+    )
+    assert (
+        Formatter(Settings(cut_head_share=0.5)).path(path, 20) == "foo/bar/long/…/long"
+    )
+
+
+def test_a_long_title_is_cut_in_the_middle_by_the_character_and_its_end_stays() -> None:
+    """A long title is cut in the middle, by the character. Its end and its marks stay.
+
+    A title is not cut at its spaces: one long word would take the rest with it.
+    """
+    fmt = Formatter(Settings())
+    title = "konfigurator-vs-api-round-2 [live]"
+
+    assert fmt.title(title, 20) == "konf…-round-2 [live]"
+    assert fmt.title(title, 12) == "ko…-2 [live]"
+    assert fmt.title(title, 1) == "]"
+    assert fmt.title(title, 0) == ""
+    assert fmt.title("Short", 30) == "Short"
+    assert Formatter(Settings(cut_head_share=0.0)).title(title, 20) == (
+        "…-api-round-2 [live]"
+    )
+    assert Formatter(Settings(cut_head_share=1.0)).title(title, 20) == (
+        "konfigurator-vs-api…"
+    )
+
+
+@pytest.mark.parametrize("width", range(0, 60, 3))
+def test_a_cut_path_never_goes_past_its_room(width: int) -> None:
+    """A cut path never goes past its room, and it ends as the path ends."""
+    path = "/home/u/dev/projects/some-long-folder-name/app-one"
+    cut = Formatter(Settings()).path(path, width)
+
+    if width >= len(path):
+        assert cut == path
+    else:
+        assert len(cut) <= width
+        assert path.endswith(cut[-1:])
+
+
 def entry(size: int, parts: tuple[Part, ...] = ()) -> TrashEntry:
     """A Trash entry of a given size, made of the parts given or one part of that size."""
     if not parts:

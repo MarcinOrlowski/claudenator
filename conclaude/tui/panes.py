@@ -223,13 +223,25 @@ class Lister(OptionList):
         event.stop()
         self.post_message(self.Opened())
 
+    def _label(self, key: str) -> str:
+        """The text of one line. The id itself, unless a subclass makes it fit."""
+        return key
+
+    def _relabel(self) -> None:
+        """Write the text of every line again, with the highlight left alone."""
+        for index, option in enumerate(self.options):
+            if option.id is not None:
+                self.replace_option_prompt_at_index(
+                    index, Content(self._label(option.id))
+                )
+
     def _refill(self, first: str, ids: list[str]) -> None:
         """Put the lines back: the 'all' line, then one per id."""
         wanted = self._selected
         index = self.highlighted or 0
         self.clear_options()
         self.add_option(Option(Content(first), id=None))
-        self.add_options(Option(Content(key), id=key) for key in ids)
+        self.add_options(Option(Content(self._label(key)), id=key) for key in ids)
         if wanted is None:
             index = 0
         else:
@@ -261,9 +273,12 @@ class ProjectsPane(Filterable, Lister):
     class Opened(Lister.Opened):
         """The user pressed enter on a project: they want to work on its sessions."""
 
-    def __init__(self) -> None:
+    def __init__(self, fmt: Formatter) -> None:
         super().__init__("projects", "Projects")
+        self.fmt = fmt
         self._projects: list[Project] = []
+        # The columns one line has for its path. Unknown until the first resize.
+        self._room = 0
 
     @property
     def selected_path(self) -> str | None:
@@ -274,6 +289,22 @@ class ProjectsPane(Filterable, Lister):
         """Replace the list. The highlight stays on its project when it is still there."""
         self._projects = list(projects)
         self._rebuild()
+
+    def on_resize(self) -> None:
+        """Write the paths again when the room for them changes."""
+        room = self._measure()
+        if room != self._room:
+            self._room = room
+            self._relabel()
+
+    def _measure(self) -> int:
+        """The columns one line has for its text, the scrollbar and padding aside."""
+        padding = self.get_component_styles("option-list--option").padding.width
+        return self.scrollable_content_region.width - padding
+
+    def _label(self, key: str) -> str:
+        """The path, cut in the middle when the line has no room for all of it."""
+        return self.fmt.path(key, self._room) if self._room > 0 else key
 
     def _rebuild(self) -> None:
         """Put the lines back, with the filter in effect."""
@@ -550,7 +581,11 @@ class SessionsPane(Table):
             self.add_column(labels["project"], key="project", width=project_width)
         for session in self._rows():
             cells: list[Text | str] = [
-                Text(self.fmt.titled(session), no_wrap=True, overflow="ellipsis"),
+                Text(
+                    self.fmt.title(self.fmt.titled(session), title_width),
+                    no_wrap=True,
+                    overflow="ellipsis",
+                ),
                 self.fmt.timestamp(session.last_used),
                 Text(self.fmt.size(session.size), justify="right"),
                 # Turn count: filled by a deep scan, which does not exist yet.
@@ -558,7 +593,11 @@ class SessionsPane(Table):
             ]
             if self._with_project:
                 cells.append(
-                    Text(session.project_path, no_wrap=True, overflow="ellipsis")
+                    Text(
+                        self.fmt.path(session.project_path, project_width),
+                        no_wrap=True,
+                        overflow="ellipsis",
+                    )
                 )
             self.add_row(*cells, key=session.id)
         self._place_cursor(wanted, index)
@@ -668,10 +707,18 @@ class EntriesPane(Table):
         self.add_column(ENTRY_COLUMNS["project"], key="project", width=project_width)
         for entry in self._rows():
             self.add_row(
-                Text(entry.title, no_wrap=True, overflow="ellipsis"),
+                Text(
+                    self.fmt.title(entry.title, title_width),
+                    no_wrap=True,
+                    overflow="ellipsis",
+                ),
                 self.fmt.timestamp(entry.trashed_at),
                 Text(self.fmt.size(entry.size), justify="right"),
-                Text(entry.project_path, no_wrap=True, overflow="ellipsis"),
+                Text(
+                    self.fmt.path(entry.project_path, project_width),
+                    no_wrap=True,
+                    overflow="ellipsis",
+                ),
                 key=entry.id,
             )
         self._place_cursor(wanted, index)
