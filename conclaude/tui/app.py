@@ -18,6 +18,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer
 
+from conclaude.core.errors import ConclaudeError
 from conclaude.core.format import Formatter
 from conclaude.core.model import Session, SessionDetails
 from conclaude.core.settings import Settings
@@ -104,6 +105,33 @@ class MainScreen(Screen[None]):
         """The cursor sits on a session."""
         session = self._by_id.get(event.session_id) if event.session_id else None
         self.query_one(DetailsPane).show(self._details_of(session))
+
+    def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
+        """The d key: the session goes to the Trash and its row goes from the table.
+
+        Nothing reloads. A session that will not go, a live one for instance,
+        stays where it is and the reason shows in a notification.
+        """
+        session = event.session
+        try:
+            self.store.trash_of(session)
+        except ConclaudeError as error:
+            self.notify(str(error), title="Not trashed", severity="error")
+            return
+        self._forget(session)
+
+    def _forget(self, session: Session) -> None:
+        """Take one session off the screen, in place.
+
+        When it was the last session of its project, the project goes from the
+        projects pane too, and the highlight there takes the line that replaced it.
+        """
+        self._sessions = [s for s in self._sessions if s.id != session.id]
+        self._by_id.pop(session.id, None)
+        self._details.pop(session.id, None)
+        self.query_one(SessionsPane).drop(session.id)
+        if not any(s.project_path == session.project_path for s in self._sessions):
+            self.query_one(ProjectsPane).show(projects_of(self._sessions))
 
     def _details_of(self, session: Session | None) -> SessionDetails | None:
         """The session details."""

@@ -740,6 +740,202 @@ async def test_a_filter_that_hides_the_cursor_session_moves_the_cursor_to_its_ro
     assert restored == ([a1, _a2, b1], b1, 2)
 
 
+def trashed(settings: Settings) -> list[str]:
+    """The session ids in the Trash, in any order."""
+    return sorted(entry.session_id for entry in SessionStore(settings).list_trash())
+
+
+def toasts(app: ConclaudeApp) -> list[tuple[str, str, str]]:
+    """The notifications on show: severity, title and message."""
+    return [(n.severity, n.title, n.message) for n in app._notifications]
+
+
+async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """D moves the session under the cursor to the Trash. Its row goes. Nothing reloads."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab")
+        await pilot.pause()
+        keys = shown_keys(app)
+        enabled = app.active_bindings["d"].enabled
+        # A session that lands on the disk now shows up only after a reload
+        late = new_id()
+        fake.transcript("/p/a", late, session_records(late, "/p/a"), mtime=4000)
+        await pilot.press("d")
+        await pilot.pause()
+        after = rows(table), table.selected_id, table.cursor_row
+        text = app.query_one(DetailsPane).text
+        focused = type(app.focused)
+        shown = toasts(app)
+
+    assert (keys["d"], enabled) == ("Trash", True)
+    assert after == ([a2, b1], a2, 0)
+    assert f"Id:          {a2}" in text
+    assert focused is SessionsPane
+    assert shown == []
+    assert trashed(settings) == [a1]
+
+
+async def test_repeated_d_walks_down_the_list_and_the_last_row_hands_over_upward(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Repeated d walks down the list. The last row hands the cursor to the one above."""
+    a1, a2, a3 = new_id(), new_id(), new_id()
+    for sid, mtime in ((a1, 3000), (a2, 2000), (a3, 1000)):
+        fake.transcript("/p/a", sid, session_records(sid, "/p/a"), mtime=mtime)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("down", "tab", "down")
+        await pilot.pause()
+        seen = [(rows(table), table.selected_id, table.cursor_row)]
+        for _ in range(2):
+            await pilot.press("d")
+            await pilot.pause()
+            seen.append((rows(table), table.selected_id, table.cursor_row))
+
+    assert seen == [
+        ([a1, a2, a3], a2, 1),
+        ([a1, a3], a3, 1),
+        ([a1], a1, 0),
+    ]
+    assert trashed(settings) == sorted([a2, a3])
+
+
+async def test_d_has_no_effect_while_another_pane_has_the_focus(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """D has no effect while another pane has the focus, and is not listed there."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        seen = []
+        for tabs in (0, 2):
+            await pilot.press(*(["tab"] * tabs))
+            await pilot.pause()
+            listed = "d" in shown_keys(app)
+            await pilot.press("d")
+            await pilot.pause()
+            seen.append((type(app.focused), listed, rows(table)))
+            await pilot.press(*(["shift+tab"] * tabs))
+
+    assert seen == [
+        (ProjectsPane, False, [a1, a2, b1]),
+        (DetailsPane, False, [a1, a2, b1]),
+    ]
+    assert trashed(settings) == []
+
+
+async def test_a_live_session_stays_and_the_reason_shows(
+    fake: FakeClaude, proc: FakeProc, settings: Settings
+) -> None:
+    """A live session stays where it is, and the reason shows to the user."""
+    running, other = new_id(), new_id()
+    fake.transcript(
+        "/p/x",
+        running,
+        session_records(running, "/p/x", custom_title="Run"),
+        mtime=2000,
+    )
+    fake.marker(100, running, 5000, name="dev:app")
+    proc.stat(100, 5000)
+    fake.transcript("/p/x", other, session_records(other, "/p/x"), mtime=1000)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab", "d")
+        await pilot.pause()
+        after = rows(table), table.selected_id, table.cursor_row
+        shown = toasts(app)
+
+    assert after == ([running, other], running, 0)
+    assert shown == [
+        (
+            "error",
+            "Not trashed",
+            f"session {running[:8]} is live (pid 100) and cannot be trashed",
+        )
+    ]
+    assert trashed(settings) == []
+
+
+async def test_the_last_session_of_a_project_takes_the_project_with_it(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The last session of a project takes the project with it. The cursor moves on."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        table = app.query_one(SessionsPane)
+        await pilot.press("down", "down", "tab")
+        await pilot.pause()
+        before = pane.selected_path, rows(table)
+        await pilot.press("d")
+        await pilot.pause()
+        prompts = [str(option.prompt) for option in pane.options]
+        after = pane.selected_path, rows(table), table.selected_id, table.cursor_row
+        focused = type(app.focused)
+        text = app.query_one(DetailsPane).text
+
+    assert before == ("/p/b", [b1])
+    assert prompts == [ALL_PROJECTS, "/p/a"]
+    assert after == ("/p/a", [a1, a2], a1, 0)
+    assert focused is SessionsPane
+    assert f"Id:          {a1}" in text
+    assert trashed(settings) == [b1]
+
+
+async def test_in_all_projects_a_gone_project_leaves_the_cursor_where_it_is(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """In 'All projects' a gone project leaves the cursor on the row that replaced it."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab", "down", "down", "d")
+        await pilot.pause()
+        prompts = [str(option.prompt) for option in pane.options]
+        after = pane.selected_path, rows(table), table.selected_id, table.cursor_row
+
+    assert prompts == [ALL_PROJECTS, "/p/a"]
+    assert after == (None, [a1, a2], a2, 1)
+    assert trashed(settings) == [b1]
+
+
+async def test_with_no_row_d_is_dimmed_and_does_nothing(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """With no row on view, d is dimmed in the footer and does nothing."""
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        active = app.active_bindings["d"]
+        dimmed = active.binding.show, active.enabled
+        await pilot.press("d")
+        await pilot.pause()
+        shown = toasts(app)
+
+    assert dimmed == (True, False)
+    assert shown == []
+    assert trashed(settings) == []
+
+
 def test_the_stylesheet_names_no_literal_colour() -> None:
     """The stylesheet names no literal colour: only theme variables."""
     path = Path(conclaude.tui.app.__file__).with_name(ConclaudeApp.CSS_PATH)

@@ -246,6 +246,7 @@ class SessionsPane(Filterable, DataTable):
     BINDINGS = [
         *SHARED_BINDINGS,
         *FILTER_BINDINGS,
+        Binding("d", "trash", "Trash"),
         Binding("o", "sort_next", "Sort"),
         Binding("O", "sort_reverse", "Reverse"),
     ]
@@ -256,6 +257,13 @@ class SessionsPane(Filterable, DataTable):
         def __init__(self, session_id: str | None) -> None:
             super().__init__()
             self.session_id = session_id
+
+    class TrashWanted(Message):
+        """The user pressed d: the session under the cursor goes to the Trash."""
+
+        def __init__(self, session: Session) -> None:
+            super().__init__()
+            self.session = session
 
     def __init__(self, fmt: Formatter) -> None:
         super().__init__(id="sessions", cursor_type="row")
@@ -296,6 +304,30 @@ class SessionsPane(Filterable, DataTable):
         self._by_id = {session.id: session for session in self._sessions}
         self._with_project = with_project
         self._rebuild()
+
+    def drop(self, session_id: str) -> None:
+        """Take one session out of the table in place. The other rows do not move.
+
+        When the cursor sat on that row, it lands on the row that slid up into
+        its place: the next session down, or the last one when there is none.
+        """
+        self._sessions = [s for s in self._sessions if s.id != session_id]
+        self._by_id.pop(session_id, None)
+        if self.rows.get(session_id) is not None:
+            self.remove_row(session_id)
+        self._announce()
+
+    def action_trash(self) -> None:
+        """The d key: ask for the session under the cursor to go to the Trash."""
+        session = self.selected
+        if session is not None:
+            self.post_message(self.TrashWanted(session))
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        """Dim 'Trash' while there is no row to act on."""
+        if action == "trash":
+            return True if self.row_count else None
+        return super().check_action(action, parameters)
 
     def sort_by(self, column: str, descending: bool | None = None) -> None:
         """Order the rows by one column.
@@ -350,9 +382,11 @@ class SessionsPane(Filterable, DataTable):
         """Say what the cursor sits on now, even when no row event will."""
         if not self.row_count:
             self._select(None)
-            return
-        cell = self.coordinate_to_cell_key(self.cursor_coordinate)
-        self._select(cell.row_key.value)
+        else:
+            cell = self.coordinate_to_cell_key(self.cursor_coordinate)
+            self._select(cell.row_key.value)
+        # 'Trash' dims with an empty table and comes back with a row
+        self.refresh_bindings()
 
     def _shown_columns(self) -> list[str]:
         """The keys of the columns on view, left to right."""

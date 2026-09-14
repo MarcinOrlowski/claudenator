@@ -331,6 +331,28 @@ def test_the_entry_id_never_reuses_a_folder(
     assert entry.path.is_dir()
 
 
+def test_trash_of_moves_a_session_already_in_hand_and_reads_nothing_again(
+    fake: FakeClaude,
+    store: SessionStore,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``trash_of`` moves a session already in hand. It reads the list again for nothing."""
+    sid = new_id()
+    path = fake.transcript(PROJECT, sid)
+    [session] = store.list_sessions()
+    monkeypatch.setattr(
+        store, "list_sessions", lambda: pytest.fail("the session list was read again")
+    )
+
+    entry = store.trash_of(session, reason="old")
+
+    assert entry.session_id == sid
+    assert entry.reason == "old"
+    assert not path.exists()
+    assert SessionStore(settings).list_sessions() == []
+
+
 def test_trashing_an_unknown_id_fails(store: SessionStore) -> None:
     """Trashing an unknown id fails."""
     with pytest.raises(SessionNotFound):

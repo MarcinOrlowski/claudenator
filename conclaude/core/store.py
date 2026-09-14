@@ -150,11 +150,19 @@ class SessionStore:
         return SessionDetails(session=session, inherited_bytes=inherited)
 
     def trash(self, wanted: str, reason: str | None = None) -> TrashEntry:
-        """Move session data to the Trash. Returns the entry that was made.
+        """Move a session to the Trash, by its id or a unique prefix of it.
 
-        Raises ``SessionIsLive`` for a session used by running process.
+        Returns the entry that was made. Raises ``SessionIsLive`` for a session
+        used by a running process.
         """
-        session = self.find_session(wanted)
+        return self.trash_of(self.find_session(wanted), reason)
+
+    def trash_of(self, session: Session, reason: str | None = None) -> TrashEntry:
+        """Move a session already in hand to the Trash. Nothing is read again.
+
+        Returns the entry that was made. Raises ``SessionIsLive`` for a session
+        used by a running process.
+        """
         return trash_session(self.settings, session, reason)
 
     def list_trash(self) -> list[TrashEntry]:
