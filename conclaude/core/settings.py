@@ -1,9 +1,4 @@
-"""The one place that holds every default.
-
-Nothing else in the code carries its own default value or hard-codes a path.
-Every other part asks the settings object. Version 1 never reads or writes a
-settings file: the object is built with its defaults at start-up.
-"""
+"""The one place that holds every default."""
 
 from __future__ import annotations
 
@@ -63,6 +58,10 @@ class Settings:
     tail_bytes_max: int = 4 * 1024 * 1024
     title_max_length: int = 100
 
+    # The Trash. An entry folder is named ``<when>_<session id>``, and this
+    # is the pattern for ``<when>``. Only characters a folder name allows.
+    trash_name_pattern: str = "%Y-%m-%dT%H-%M-%S"
+
     @property
     def projects_dir(self) -> Path:
         """Where the transcripts and their sidecars live."""
@@ -78,10 +77,58 @@ class Settings:
         """Claude Code's prompt history. Read as a fallback, never written."""
         return self.claude_dir / "history.jsonl"
 
+    # The small folders Claude Code names after a session id. Each holds one
+    # part of a session, and every one of them is optional.
+
+    @property
+    def session_env_dir(self) -> Path:
+        """``session-env/<id>/``: the environment a session ran with."""
+        return self.claude_dir / "session-env"
+
+    @property
+    def file_history_dir(self) -> Path:
+        """``file-history/<id>/``: snapshots of files a session edited."""
+        return self.claude_dir / "file-history"
+
+    @property
+    def jobs_dir(self) -> Path:
+        """``jobs/<first 8 characters of the id>/``: a background job's state."""
+        return self.claude_dir / "jobs"
+
+    @property
+    def tasks_dir(self) -> Path:
+        """``tasks/<id>/``: a session's task list."""
+        return self.claude_dir / "tasks"
+
+    @property
+    def debug_dir(self) -> Path:
+        """``debug/<id>.txt``: a session's debug log."""
+        return self.claude_dir / "debug"
+
+    @property
+    def todos_dir(self) -> Path:
+        """``todos/*<id>*``: a session's todo files."""
+        return self.claude_dir / "todos"
+
+    @property
+    def telemetry_dir(self) -> Path:
+        """``telemetry/*.<id>.*``: telemetry a session failed to send."""
+        return self.claude_dir / "telemetry"
+
+    @property
+    def teams_dir(self) -> Path:
+        """``teams/<id>/``: a session's team data."""
+        return self.claude_dir / "teams"
+
     @property
     def trash_dir(self) -> Path:
         """Where trashed sessions go."""
         return self.data_dir / "trash"
+
+    @property
+    def trash_lock_file(self) -> Path:
+        """The lock held while a session moves in or out of the Trash."""
+        return self.data_dir / "trash.lock"
 
     @property
     def cache_file(self) -> Path:

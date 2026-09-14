@@ -9,6 +9,7 @@ import pytest
 
 from conclaude.cli.main import main
 from conclaude.core.settings import Settings
+from conclaude.core.store import SessionStore
 from tests.fabricate import FakeClaude, FakeProc, new_id, session_records
 
 PROJECT = "/p/x"
@@ -141,6 +142,26 @@ def test_info_shows_the_pid_of_a_live_session(
 
     assert code == 0
     assert "Live:        yes  (pid 4242)" in out
+
+
+def test_list_no_longer_shows_a_trashed_session(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """List no longer shows a trashed session."""
+    gone, kept = new_id(), new_id()
+    fake.transcript(PROJECT, gone, session_records(gone, PROJECT, custom_title="Gone"))
+    fake.transcript(PROJECT, kept, session_records(kept, PROJECT, custom_title="Kept"))
+    SessionStore(settings).trash(gone)
+
+    code, out, _err = run(capsys, settings, "list")
+    _code, json_out, _err = run(capsys, settings, "list", "--json")
+    _code, _out, err = run(capsys, settings, "info", gone)
+
+    assert code == 0
+    assert "Kept" in out
+    assert "Gone" not in out
+    assert [row["id"] for row in json.loads(json_out)] == [kept]
+    assert f"no session matches '{gone}'" in err
 
 
 def test_list_with_nothing_to_show(
