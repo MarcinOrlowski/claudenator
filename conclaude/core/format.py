@@ -121,6 +121,12 @@ class Formatter:
         tail = room - head
         return f"{title[:head]}{mark}{title[-tail:] if tail else ''}"
 
+    def fit(self, text: str, width: int) -> str:
+        """``text`` in ``width`` columns. One with a slash in it is cut like a path,
+        at its slashes. Any other is cut like a title, by the character.
+        """
+        return self.path(text, width) if SLASH in text else self.title(text, width)
+
     def cut(self, text: str, width: int, sep: str) -> str:
         """``text`` in ``width`` cols. One too long is cut in the middle, at ``sep``."""
         width = max(width, 0)
@@ -166,20 +172,25 @@ class Formatter:
         return f"{session.title} {tag}" if tag else session.title
 
     def describe(self, details: SessionDetails) -> list[tuple[str, str]]:
-        """One session in full, as label and value pairs, in reading order."""
+        """One session in full, as label and value pairs, in reading order.
+
+        The folder that holds the transcript and the sidecar is named once, in
+        full. The two of them are then named by their name alone, so no line
+        carries the whole path twice.
+        """
         session = details.session
         lines = [
             ("Id", session.id),
             ("Title", f"{session.title}  (from {session.title_source})"),
             ("Project", f"{session.project_path}  (from {session.project_source})"),
-            ("Folder", session.project_key),
+            ("Folder", str(session.transcript_path.parent)),
             ("Git branch", session.git_branch or "-"),
             ("Created", self.timestamp(session.created)),
             ("Last used", self.timestamp(session.last_used)),
             ("Claude Code", session.version or "-"),
             (
                 "Transcript",
-                f"{self.size(session.transcript_size)}  {session.transcript_path}",
+                f"{self.size(session.transcript_size)}  {session.transcript_path.name}",
             ),
         ]
         if session.sidecar_path is not None:
@@ -188,7 +199,7 @@ class Formatter:
             lines.append(
                 (
                     "Sidecar",
-                    f"{self.size(session.sidecar_size)}  {session.sidecar_path}"
+                    f"{self.size(session.sidecar_size)}  {session.sidecar_path.name}"
                     f"  ({agents} {noun})",
                 )
             )
