@@ -17,16 +17,20 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from qrcat import render_qr
 from textual.color import Color, ColorParseError
+from textual.containers import VerticalScroll
 from textual.theme import BUILTIN_THEMES
 from textual.widgets import DataTable, Header, Static
 
 import conclaude.tui.app
+from conclaude import __author__, __description__, __title__, __url__, __version__
 from conclaude.core.format import Formatter
 from conclaude.core.model import TrashEntry
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
 from conclaude.core.trash import trash_session
+from conclaude.tui.about import QR_BORDER, QR_ERROR, AboutScreen
 from conclaude.tui.app import ConclaudeApp, MainScreen, TrashScreen
 from conclaude.tui.panes import (
     ALL_DAYS,
@@ -346,7 +350,7 @@ def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
     panes = (ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane)
     for pane in panes:
         keys = {binding.key for binding in pane.__dict__["BINDINGS"]}
-        assert {"tab", "q", "r", "t"} <= keys, pane.__name__
+        assert {"tab", "q", "r", "t", "question_mark"} <= keys, pane.__name__
 
 
 async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
@@ -1643,6 +1647,145 @@ async def test_the_trash_table_cuts_a_long_title_in_the_middle_too(
     assert 0 < width < len(TALE)
     assert cell == fmt.title(entry.title, width)
     assert cell.endswith("part one") and settings.cut_mark in cell
+
+
+async def test_the_about_box_names_the_tool_its_version_and_its_address(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The ? key opens the About box. Escape closes it and the pane has the focus back."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        before = type(app.screen), type(app.focused)
+        await pilot.press("question_mark")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, AboutScreen)
+        lines = screen.text.splitlines()
+        shown = str(screen.query_one("#about-text", Static).content)
+        await pilot.press("escape")
+        await pilot.pause()
+        after = type(app.screen), type(app.focused)
+
+    assert before == (MainScreen, ProjectsPane)
+    assert lines[:3] == [
+        f"{__title__} {__version__}",
+        __description__,
+        f"Copyright © 2026 {__author__}",
+    ]
+    assert lines[-1] == __url__
+    assert shown == screen.text
+    assert after == (MainScreen, ProjectsPane)
+
+
+async def test_the_about_box_holds_a_qr_code_of_the_address(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The box holds the address as a QR code too, to point a phone at."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, AboutScreen)
+        text = screen.text
+
+    code = render_qr(__url__, error=QR_ERROR, border=QR_BORDER)
+    lines = code.splitlines()
+    assert f"{code}\n{__url__}" in text
+    # Every line of a QR code is as wide as the code, and the three corners
+    # a reader looks for sit in it.
+    assert len({len(line) for line in lines}) == 1
+    assert len(lines) == 17
+    corner = "█▀▀▀▀▀█"
+    assert lines[1].strip().startswith(corner) and lines[1].strip().endswith(corner)
+    assert lines[-5].strip().startswith(corner)
+
+
+async def test_the_about_box_fits_a_small_window_and_scrolls_in_a_smaller_one(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The box fits an 80x24 window whole. A window under that scrolls it."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        box = app.screen.query_one("#about", VerticalScroll)
+        region = box.region
+        whole = box.max_scroll_x == 0 and box.max_scroll_y == 0
+        focused = app.focused
+
+        await pilot.resize_terminal(60, 18)
+        await pilot.pause()
+        hidden = box.max_scroll_y
+        await pilot.press("down", "down")
+        await pilot.pause()
+        scrolled = box.scroll_y
+
+    assert region.width <= 80 and region.height <= 24
+    assert whole, "the box did not fit an 80x24 window"
+    assert focused is box
+    assert hidden > 0
+    assert scrolled == 2
+
+
+async def test_every_key_of_the_about_box_closes_it_and_q_does_not_quit(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Escape, enter, ? and q all close the box. In the box, q closes it and stays."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    closed: list[type] = []
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for key in ("escape", "enter", "question_mark", "q"):
+            await pilot.press("question_mark")
+            await pilot.pause()
+            assert type(app.screen) is AboutScreen, f"{key} did not open the box"
+            await pilot.press(key)
+            await pilot.pause()
+            closed.append(type(app.screen))
+        running = app.is_running
+
+    assert closed == [MainScreen] * 4
+    assert running is True
+
+
+async def test_the_about_key_works_on_every_pane_and_in_the_trash(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Every pane lists the About key and opens the box with it, Trash mode too."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ConclaudeApp(settings)
+    opened: list[tuple[type, type]] = []
+    listed: list[str] = []
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for keys in ((), ("tab",), ("tab", "tab"), ("t",)):
+            await pilot.press(*keys)
+            await pilot.pause()
+            pane, under = type(app.focused), type(app.screen)
+            listed.append(shown_keys(app)["question_mark"])
+            await pilot.press("question_mark")
+            await pilot.pause()
+            opened.append((type(app.screen), under))
+            await pilot.press("escape")
+            await pilot.pause()
+            assert type(app.focused) is pane, f"focus lost from {pane.__name__}"
+
+    assert opened == [
+        (AboutScreen, MainScreen),
+        (AboutScreen, MainScreen),
+        (AboutScreen, MainScreen),
+        (AboutScreen, TrashScreen),
+    ]
+    assert listed == ["About"] * 4
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:

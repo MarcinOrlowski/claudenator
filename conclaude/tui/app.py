@@ -20,11 +20,13 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen, ScreenResultType
 from textual.widgets import Footer, Header
 
+from conclaude import __title__
 from conclaude.core.errors import ConclaudeError
 from conclaude.core.format import Formatter
 from conclaude.core.model import Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore, projects_of
+from conclaude.tui.about import AboutScreen
 from conclaude.tui.panes import (
     DaysPane,
     DetailsPane,
@@ -294,7 +296,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
 class ConclaudeApp(App[None]):
     """The TUI"""
 
-    TITLE = "conclaude"
+    TITLE = __title__
     CSS_PATH = "conclaude.tcss"
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -306,6 +308,10 @@ class ConclaudeApp(App[None]):
     def get_default_screen(self) -> MainScreen:
         """The screen shown at start."""
         return MainScreen(self.store, self.fmt)
+
+    def action_about(self) -> None:
+        """The ``?`` key on any pane: the About box opens over the panes."""
+        self.push_screen(AboutScreen())
 
     def on_mount(self) -> None:
         """The theme in effect is the one the settings name."""
