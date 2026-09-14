@@ -59,6 +59,12 @@ class Settings:
     time_pattern: str = "%Y-%m-%d %H:%M:%S"
     # A calendar day, for grouping Trash entries
     day_pattern: str = "%Y-%m-%d"
+    # A path with no room for all of it is cut in the middle, at the slashes,
+    # and this marks the cut. The end of the path always stays whole.
+    path_ellipsis: str = "…"
+    # The share of the room the start of a cut path may take. The end gets the
+    # rest, and the room the start leaves unused. 0 keeps the end alone.
+    path_head_share: float = 0.25
 
     # Reading transcripts. See ``scan.read_cheap`` for what these bound.
     head_records: int = 500

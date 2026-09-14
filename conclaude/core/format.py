@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime, timezone
 
 from conclaude.core.model import Session, SessionDetails, TrashEntry
@@ -20,6 +21,19 @@ from conclaude.core.settings import Settings
 
 TIME_FORMATS = ("absolute", "relative", "both")
 UNITS = (("y", 365 * 86400), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1))
+SEP = "/"
+
+
+def parts_that_fit(parts: Sequence[str], room: int) -> int:
+    """How many of ``parts``, joined with slashes from the first one, fit in ``room``."""
+    count = used = 0
+    for part in parts:
+        need = len(part) + (len(SEP) if count else 0)
+        if used + need > room:
+            break
+        used += need
+        count += 1
+    return count
 
 
 class Formatter:
@@ -84,6 +98,41 @@ class Formatter:
                 return f"{value:.1f}{unit}"
             value /= 1024
         return f"{int(value)}B"
+
+    def path(self, path: str, width: int) -> str:
+        """A path in ``width`` columns. One too long is cut in the middle, at slashes.
+
+        The end of the path always stays, so two paths that differ in their
+        last part alone stay apart: ``/home/u/dev/projects/app-one`` in 16
+        columns is ``/home/…/app-one``. The start keeps at most the share of
+        the room the settings give, and the end takes what the start leaves.
+        A last part too long for the room on its own keeps its end.
+        """
+        width = max(width, 0)
+        if len(path) <= width:
+            return path
+        mark = self.settings.path_ellipsis
+        parts = path.split(SEP)
+        # Room for the text on both sides of the mark, the slashes round it aside.
+        room = width - len(mark) - 2 * len(SEP)
+        if len(parts) == 1 or len(parts[-1]) > room + len(SEP):
+            keep = width - len(mark)
+            if keep <= 0:
+                return path[-width:] if width else ""
+            return mark + path[-keep:]
+        # The end first, up to its share. Then the start, in what is left. Then
+        # the end again, in case the start did not use all of its share.
+        share = int(room * self.settings.path_head_share)
+        cut = len(parts) - max(parts_that_fit(parts[::-1], room - share), 1)
+        tail = SEP.join(parts[cut:])
+        first = parts_that_fit(parts[: cut - 1], room - len(tail))
+        head = SEP.join(parts[:first])
+        left = room - len(head) if first else room + len(SEP)
+        cut = len(parts) - max(parts_that_fit(parts[:first:-1], left), 1)
+        tail = SEP.join(parts[cut:])
+        if not first:
+            return f"{mark}{SEP}{tail}"
+        return f"{head}{SEP}{mark}{SEP}{tail}"
 
     def marks(self, session: Session) -> str:
         """The session state: live, fork, damaged."""

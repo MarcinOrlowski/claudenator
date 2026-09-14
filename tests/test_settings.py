@@ -81,3 +81,5 @@ def test_screen_defaults_are_present() -> None:
     assert settings.hide_projects_below < settings.hide_details_below
     assert settings.confirm_delete is False
     assert settings.time_format == "both"
+    assert settings.path_ellipsis
+    assert 0 <= settings.path_head_share <= 1
