@@ -28,7 +28,16 @@ def test_every_location_derives_from_a_root(tmp_path: Path) -> None:
     assert settings.projects_dir == tmp_path / "cc" / "projects"
     assert settings.sessions_dir == tmp_path / "cc" / "sessions"
     assert settings.history_file == tmp_path / "cc" / "history.jsonl"
+    assert settings.session_env_dir == tmp_path / "cc" / "session-env"
+    assert settings.file_history_dir == tmp_path / "cc" / "file-history"
+    assert settings.jobs_dir == tmp_path / "cc" / "jobs"
+    assert settings.tasks_dir == tmp_path / "cc" / "tasks"
+    assert settings.debug_dir == tmp_path / "cc" / "debug"
+    assert settings.todos_dir == tmp_path / "cc" / "todos"
+    assert settings.telemetry_dir == tmp_path / "cc" / "telemetry"
+    assert settings.teams_dir == tmp_path / "cc" / "teams"
     assert settings.trash_dir == tmp_path / "own" / "trash"
+    assert settings.trash_lock_file == tmp_path / "own" / "trash.lock"
     assert settings.cache_file == tmp_path / "own" / "cache.db"
 
 

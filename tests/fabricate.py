@@ -6,6 +6,7 @@ folders made here. Nothing is mocked or patched.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -16,6 +17,37 @@ from typing import Any, Iterable
 from conclaude.core.settings import Settings
 
 STARTED = "2026-09-14T07:18:50.439Z"
+
+# What a snapshot records for one path: the kind, then the size and content
+# hash for a file, the link target for a symlink, nothing more for a folder.
+Snapshot = dict[str, tuple[Any, ...]]
+
+
+def snapshot(root: Path) -> Snapshot:
+    """Every path below a folder, with enough to prove it did not change.
+
+    Symlinks are recorded as links and never followed. Keys are relative to
+    ``root`` with ``/`` separators, so two snapshots of different roots can
+    be compared part by part.
+    """
+    found: Snapshot = {}
+    if not root.exists():
+        return found
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        here = Path(dirpath)
+        dirnames.sort()
+        filenames.sort()
+        for name in dirnames + filenames:
+            path = here / name
+            key = path.relative_to(root).as_posix()
+            if path.is_symlink():
+                found[key] = ("link", os.readlink(path))
+            elif path.is_dir():
+                found[key] = ("dir",)
+            else:
+                data = path.read_bytes()
+                found[key] = ("file", len(data), hashlib.sha1(data).hexdigest())
+    return found
 
 
 def encode_project(path: str) -> str:
@@ -256,6 +288,107 @@ class FakeClaude:
         folder = self.root / where / "lost+found"
         folder.mkdir(parents=True, exist_ok=True)
         return folder
+
+    # The small parts of a session. Each is named after the session id the
+    # way Claude Code names it, and each holds a little content of its own
+    # so a test can tell it apart after a move.
+
+    def _folder(self, where: str, name: str, files: dict[str, bytes]) -> Path:
+        folder = self.root / where / name
+        folder.mkdir(parents=True, exist_ok=True)
+        for file_name, data in files.items():
+            path = folder / file_name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        return folder
+
+    def session_env(self, session_id: str) -> Path:
+        """``session-env/<id>/`` with one environment file."""
+        return self._folder("session-env", session_id, {"env": b"A=1\n"})
+
+    def file_history(self, session_id: str) -> Path:
+        """``file-history/<id>/`` with a couple of edit snapshots."""
+        files = {"0f23617936aa125f@v1": b"old\n", "0f23617936aa125f@v2": b"new\n"}
+        return self._folder("file-history", session_id, files)
+
+    def job(self, session_id: str) -> Path:
+        """``jobs/<first 8>/`` with a state file, beside the shared ``pins.json``."""
+        pins = self.root / "jobs" / "pins.json"
+        if not pins.exists():
+            pins.parent.mkdir(parents=True, exist_ok=True)
+            pins.write_bytes(b"[]\n")
+        files = {"state.json": b'{"state": "idle"}\n', "tmp/scratch.txt": b"x\n"}
+        return self._folder("jobs", session_id[:8], files)
+
+    def task(self, session_id: str) -> Path:
+        """``tasks/<id>/`` with two task files."""
+        return self._folder("tasks", session_id, {"1.json": b"{}\n", "2.json": b"{}\n"})
+
+    def debug(self, session_id: str) -> Path:
+        """``debug/<id>.txt``."""
+        folder = self.root / "debug"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{session_id}.txt"
+        path.write_bytes(b"debug log\n")
+        return path
+
+    def todo(self, session_id: str) -> Path:
+        """``todos/<id>-agent-<id>.json``."""
+        folder = self.root / "todos"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{session_id}-agent-{session_id}.json"
+        path.write_bytes(b"[]\n")
+        return path
+
+    def telemetry(self, session_id: str, event_id: str = "e1") -> Path:
+        """``telemetry/1p_failed_events.<id>.<event>.json``."""
+        folder = self.root / "telemetry"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"1p_failed_events.{session_id}.{event_id}.json"
+        path.write_bytes(b"{}\n")
+        return path
+
+    def team(self, session_id: str) -> Path:
+        """``teams/<id>/`` with a config file."""
+        return self._folder("teams", session_id, {"config.json": b"{}\n"})
+
+    def every_part(self, project_path: str, session_id: str) -> dict[str, Path]:
+        """A session with every optional part present, keyed by kind."""
+        return {
+            "transcript": self.transcript(project_path, session_id),
+            "sidecar": self.sidecar(project_path, session_id, agents=2),
+            "session-env": self.session_env(session_id),
+            "file-history": self.file_history(session_id),
+            "job": self.job(session_id),
+            "task": self.task(session_id),
+            "debug": self.debug(session_id),
+            "team": self.team(session_id),
+            "todo": self.todo(session_id),
+            "telemetry": self.telemetry(session_id),
+        }
+
+    def shared(self) -> list[Path]:
+        """The files Claude Code shares between sessions. None may ever move.
+
+        The top-level configuration file sits beside the data folder, as
+        ``~/.claude.json`` sits beside ``~/.claude``.
+        """
+        config = self.root.parent / f"{self.root.name}.json"
+        config.write_bytes(b'{"theme": "dark"}\n')
+        paths = [
+            config,
+            self.root / "history.jsonl",
+            self.root / "settings.json",
+            self.root / "paste-cache" / "0123abcd.txt",
+            self.root / "plans" / "wise-plan.md",
+            self.root / "shell-snapshots" / "snapshot-bash-1789370589613-382iow.sh",
+            self.root / "jobs" / "pins.json",
+        ]
+        for path in paths[1:]:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists() or path.stat().st_size == 0:
+                path.write_bytes(f"shared {path.name}\n".encode())
+        return paths
 
 
 class FakeProc:

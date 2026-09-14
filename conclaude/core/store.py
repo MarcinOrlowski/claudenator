@@ -1,9 +1,4 @@
-"""The session store: the only thing that reads or changes session data.
-
-Everything else, the screen and the command line alike, asks this object.
-Nothing else opens a transcript or touches a folder under Claude Code's data
-directory.
-"""
+"""The session store: the only thing that reads or changes session data."""
 
 from __future__ import annotations
 
@@ -14,7 +9,7 @@ from typing import Any, Callable
 
 from conclaude.core.errors import AmbiguousSessionId, SessionNotFound
 from conclaude.core.live import LiveSession, find_live
-from conclaude.core.model import Project, Session, SessionDetails
+from conclaude.core.model import Project, Session, SessionDetails, TrashEntry
 from conclaude.core.scan import (
     CheapFields,
     count_subagents,
@@ -27,6 +22,7 @@ from conclaude.core.scan import (
     sidecar_for,
 )
 from conclaude.core.settings import Settings
+from conclaude.core.trash import trash_session
 
 
 class SessionStore:
@@ -43,8 +39,7 @@ class SessionStore:
     def list_sessions(self) -> list[Session]:
         """Every session, sorted the way the settings say.
 
-        Liveness is checked afresh on every call. It is a handful of small
-        files and a process table, so it is cheap, and it must never be stale.
+        Liveness is checked afresh on every call.
         """
         live = find_live(self.settings)
         sessions: list[Session] = []
@@ -84,8 +79,7 @@ class SessionStore:
     def find_session(self, wanted: str) -> Session:
         """One session by its full id or a unique prefix of it.
 
-        Raises ``SessionNotFound`` or ``AmbiguousSessionId``. The tool never
-        guesses between two sessions.
+        Raises ``SessionNotFound`` or ``AmbiguousSessionId``.
         """
         sessions = self.list_sessions()
         for session in sessions:
@@ -105,6 +99,15 @@ class SessionStore:
         if session.is_fork:
             inherited = inherited_bytes(session.transcript_path, session.id)
         return SessionDetails(session=session, inherited_bytes=inherited)
+
+    def trash(self, wanted: str, reason: str | None = None) -> TrashEntry:
+        """Move one session, with every part of it, to the Trash.
+
+        Returns the entry that was made.
+        Raises ``SessionIsLive`` for a session a process is running.
+        """
+        session = self.find_session(wanted)
+        return trash_session(self.settings, session, reason)
 
     def _load(
         self,

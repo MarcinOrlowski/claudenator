@@ -15,7 +15,7 @@ def _iso(value: datetime | None) -> str | None:
 
 @dataclass(frozen=True)
 class Session:
-    """One Claude Code conversation, with every cheap field known about it."""
+    """One Claude Code conversation"""
 
     id: str
     project_key: str
@@ -39,7 +39,7 @@ class Session:
 
     @property
     def size(self) -> int:
-        """Bytes on disk, transcript plus sidecar. This is what a removal wins back."""
+        """Bytes on disk, transcript plus sidecar."""
         return self.transcript_size + self.sidecar_size
 
     @property
@@ -85,6 +85,68 @@ class SessionDetails:
         data = self.session.to_dict()
         data["inherited_bytes"] = self.inherited_bytes
         return data
+
+
+@dataclass(frozen=True)
+class Part:
+    """One piece of a session on the disk, and where it belongs.
+
+    ``original`` is the absolute path the part lives at under Claude Code's
+    folder. ``stored`` is where it sits inside a Trash entry, relative to the
+    entry folder, in the same shape it came from.
+    """
+
+    kind: str
+    original: Path
+    stored: Path
+    is_dir: bool
+    size: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """A plain dict for the manifest and for JSON output."""
+        return {
+            "kind": self.kind,
+            "original": str(self.original),
+            "stored": str(self.stored),
+            "type": "dir" if self.is_dir else "file",
+            "size": self.size,
+        }
+
+
+@dataclass(frozen=True)
+class TrashEntry:
+    """One act of trashing: one session, every part of it, in one folder.
+
+    ``id`` is the name of the entry folder.
+    """
+
+    id: str
+    path: Path
+    session_id: str
+    trashed_at: datetime
+    reason: str | None
+    title: str
+    project_path: str
+    parts: tuple[Part, ...]
+
+    @property
+    def size(self) -> int:
+        """Bytes the entry holds, over every part."""
+        return sum(part.size for part in self.parts)
+
+    def to_dict(self) -> dict[str, Any]:
+        """A plain dict for JSON output."""
+        return {
+            "id": self.id,
+            "path": str(self.path),
+            "session_id": self.session_id,
+            "trashed_at": _iso(self.trashed_at),
+            "reason": self.reason,
+            "title": self.title,
+            "project_path": self.project_path,
+            "size": self.size,
+            "parts": [part.to_dict() for part in self.parts],
+        }
 
 
 @dataclass(frozen=True)

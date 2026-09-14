@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 class ConclaudeError(Exception):
     """Base for every error the core layer raises on purpose."""
@@ -23,3 +25,24 @@ class AmbiguousSessionId(ConclaudeError):
         super().__init__(f"'{wanted}' matches {len(candidates)} sessions: {shown}")
         self.wanted = wanted
         self.candidates = candidates
+
+
+class SessionIsLive(ConclaudeError):
+    """A process is running the session right now, so it cannot be trashed."""
+
+    def __init__(self, session_id: str, pid: int) -> None:
+        super().__init__(
+            f"session {session_id[:8]} is live (pid {pid}) and cannot be trashed"
+        )
+        self.session_id = session_id
+        self.pid = pid
+
+
+class TrashFailed(ConclaudeError):
+    """A part of a session could not be moved. The path names what stopped it."""
+
+    def __init__(self, session_id: str, path: Path, cause: OSError) -> None:
+        super().__init__(f"could not move {path}: {cause.strerror or cause}")
+        self.session_id = session_id
+        self.path = path
+        self.cause = cause
