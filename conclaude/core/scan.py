@@ -156,15 +156,19 @@ def squash(text: str | None, max_length: int) -> str:
 
 
 def derive_title(
-    fields: CheapFields, session_id: str, max_length: int
+    fields: CheapFields,
+    session_id: str,
+    max_length: int,
+    live_name: str | None = None,
 ) -> tuple[str, str]:
     """The title of a session and where it came from.
 
-    Order: the last custom title, then the first message the user really
-    typed, then the pre-truncated copy of the most recent prompt, then the
-    start of the id.
+    Order: the name in the process marker of a live session, then the last
+    custom title, then the first message the user really typed, then the
+    pre-truncated copy of the most recent prompt, then the start of the id.
     """
     candidates = (
+        ("live", live_name),
         ("custom-title", fields.custom_title),
         ("human", fields.human_title),
         ("last-prompt", fields.last_prompt),

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from conclaude.core.errors import AmbiguousSessionId, SessionNotFound
+from conclaude.core.live import LiveSession, find_live
 from conclaude.core.model import Project, Session, SessionDetails
 from conclaude.core.scan import (
     CheapFields,
@@ -40,11 +41,18 @@ class SessionStore:
         self._history = None
 
     def list_sessions(self) -> list[Session]:
-        """Every session, sorted the way the settings say."""
+        """Every session, sorted the way the settings say.
+
+        Liveness is checked afresh on every call. It is a handful of small
+        files and a process table, so it is cheap, and it must never be stale.
+        """
+        live = find_live(self.settings)
         sessions: list[Session] = []
         for project_dir in iter_project_dirs(self.settings.projects_dir):
             for session_id, transcript in iter_transcripts(project_dir):
-                session = self._load(project_dir.name, session_id, transcript)
+                session = self._load(
+                    project_dir.name, session_id, transcript, live.get(session_id)
+                )
                 if session is not None:
                     sessions.append(session)
         sessions.sort(key=self._sort_key(), reverse=self.settings.sort_descending)
@@ -99,7 +107,11 @@ class SessionStore:
         return SessionDetails(session=session, inherited_bytes=inherited)
 
     def _load(
-        self, project_key: str, session_id: str, transcript: Path
+        self,
+        project_key: str,
+        session_id: str,
+        transcript: Path,
+        live: LiveSession | None,
     ) -> Session | None:
         try:
             stat = transcript.stat()
@@ -108,7 +120,10 @@ class SessionStore:
         fields = read_cheap(transcript, session_id, self.settings)
         sidecar = sidecar_for(transcript)
         title, title_source = derive_title(
-            fields, session_id, self.settings.title_max_length
+            fields,
+            session_id,
+            self.settings.title_max_length,
+            live.name if live else None,
         )
         project_path, project_source = self._resolve_project(
             project_key, session_id, fields
@@ -131,6 +146,8 @@ class SessionStore:
             version=fields.version,
             fork_parent=fields.fork_parent,
             damaged=fields.damaged,
+            live=live is not None,
+            pid=live.pid if live else None,
         )
 
     def _resolve_project(

@@ -35,6 +35,7 @@ class Session:
     fork_parent: str | None
     damaged: bool
     live: bool = False
+    pid: int | None = None
 
     @property
     def size(self) -> int:
@@ -66,6 +67,7 @@ class Session:
             "fork_parent": self.fork_parent,
             "damaged": self.damaged,
             "live": self.live,
+            "pid": self.pid,
             "transcript_path": str(self.transcript_path),
             "sidecar_path": str(self.sidecar_path) if self.sidecar_path else None,
         }
