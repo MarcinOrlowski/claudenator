@@ -12,6 +12,12 @@ on:
   pull_request:
     branches: [ master, dev ]
 
+# paths-filter asks the GitHub API for the files a pull request changed, and
+# that needs "pull-requests: read", which the repository's default token lacks.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   markdown_lint:
     name: "Markdown linter"
@@ -24,11 +30,11 @@ jobs:
     steps:
       # https://github.com/marketplace/actions/checkout
       - name: "Checkout sources"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # https://github.com/marketplace/actions/paths-changes-filter
       - name: "Look for changed doc related files..."
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
