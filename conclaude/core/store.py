@@ -7,7 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from conclaude.core.errors import AmbiguousSessionId, SessionNotFound
+from conclaude.core.errors import (
+    AmbiguousSessionId,
+    AmbiguousTrashEntry,
+    SessionNotFound,
+    TrashEntryNotFound,
+)
 from conclaude.core.live import LiveSession, find_live
 from conclaude.core.model import Project, Session, SessionDetails, TrashEntry
 from conclaude.core.scan import (
@@ -22,7 +27,13 @@ from conclaude.core.scan import (
     sidecar_for,
 )
 from conclaude.core.settings import Settings
-from conclaude.core.trash import trash_session
+from conclaude.core.trash import (
+    list_entries,
+    purge_entry,
+    restore_entry,
+    total_size,
+    trash_session,
+)
 
 
 class SessionStore:
@@ -37,10 +48,7 @@ class SessionStore:
         self._history = None
 
     def list_sessions(self) -> list[Session]:
-        """Every session, sorted the way the settings say.
-
-        Liveness is checked afresh on every call.
-        """
+        """Every session, sorted the way the settings say."""
         live = find_live(self.settings)
         sessions: list[Session] = []
         for project_dir in iter_project_dirs(self.settings.projects_dir):
@@ -101,13 +109,52 @@ class SessionStore:
         return SessionDetails(session=session, inherited_bytes=inherited)
 
     def trash(self, wanted: str, reason: str | None = None) -> TrashEntry:
-        """Move one session, with every part of it, to the Trash.
+        """Move session data to the Trash. Returns the entry that was made.
 
-        Returns the entry that was made.
-        Raises ``SessionIsLive`` for a session a process is running.
+        Raises ``SessionIsLive`` for a session used by running process.
         """
         session = self.find_session(wanted)
         return trash_session(self.settings, session, reason)
+
+    def list_trash(self) -> list[TrashEntry]:
+        """Every entry in the Trash, newest first. Read afresh on every call."""
+        return list_entries(self.settings)
+
+    def trash_size(self) -> int:
+        """Bytes the Trash holds, over every entry."""
+        return total_size(self.settings)
+
+    def find_entry(self, wanted: str) -> TrashEntry:
+        """One Trash entry by its id, or by a unique prefix of its id or of its session id.
+
+        Raises ``TrashEntryNotFound`` or ``AmbiguousTrashEntry``.
+        """
+        entries = self.list_trash()
+        for entry in entries:
+            if entry.id == wanted:
+                return entry
+        matches = [
+            entry
+            for entry in entries
+            if entry.id.startswith(wanted) or entry.session_id.startswith(wanted)
+        ]
+        if not matches:
+            raise TrashEntryNotFound(wanted)
+        if len(matches) > 1:
+            raise AmbiguousTrashEntry(wanted, [entry.id for entry in matches])
+        return matches[0]
+
+    def restore(self, wanted: str) -> TrashEntry:
+        """Restores trashed entry. Returns the entry that was restored.
+
+        Raises ``RestoreClash`` when something sits in target folder
+        and ``TrashEntryDamaged`` when the entry cannot be restored.
+        """
+        return restore_entry(self.settings, self.find_entry(wanted))
+
+    def purge(self, wanted: str) -> TrashEntry:
+        """Remove one Trash entry from the disk for good. Returns what went."""
+        return purge_entry(self.settings, self.find_entry(wanted))
 
     def _load(
         self,
@@ -156,11 +203,7 @@ class SessionStore:
     def _resolve_project(
         self, project_key: str, session_id: str, fields: CheapFields
     ) -> tuple[str, str]:
-        """The real project path and where it came from.
-
-        The stored folder name is the last resort and is used only as a label.
-        It is never decoded back into a path: the encoding is lossy.
-        """
+        """The real project path and where it came from."""
         if fields.cwd:
             return fields.cwd, "transcript"
         from_history = self._history_projects().get(session_id)

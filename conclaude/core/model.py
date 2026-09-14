@@ -112,6 +112,33 @@ class Part:
             "size": self.size,
         }
 
+    @classmethod
+    def from_dict(cls, data: Any) -> Part:
+        """A part read back from a manifest. Raises ``ValueError`` for a bad record."""
+        if not isinstance(data, dict):
+            raise ValueError("a part must be an object")
+        kind = data.get("kind")
+        original = data.get("original")
+        stored = data.get("stored")
+        shape = data.get("type")
+        size = data.get("size")
+        if not (
+            isinstance(kind, str)
+            and isinstance(original, str)
+            and isinstance(stored, str)
+            and shape in ("dir", "file")
+            and isinstance(size, int)
+            and not isinstance(size, bool)
+        ):
+            raise ValueError("a part record is missing a field or has a wrong one")
+        return cls(
+            kind=kind,
+            original=Path(original),
+            stored=Path(stored),
+            is_dir=shape == "dir",
+            size=size,
+        )
+
 
 @dataclass(frozen=True)
 class TrashEntry:
@@ -148,13 +175,48 @@ class TrashEntry:
             "parts": [part.to_dict() for part in self.parts],
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], path: Path) -> TrashEntry:
+        """An entry read back from the manifest in its folder.
+
+        The folder name is the id. Raises ``ValueError`` for a record that
+        is missing a field or has a wrong one.
+        """
+        session_id = data.get("session_id")
+        trashed_at = data.get("trashed_at")
+        reason = data.get("reason")
+        title = data.get("title")
+        project_path = data.get("project_path")
+        parts = data.get("parts")
+        if not (
+            isinstance(session_id, str)
+            and isinstance(trashed_at, str)
+            and (reason is None or isinstance(reason, str))
+            and isinstance(title, str)
+            and isinstance(project_path, str)
+            and isinstance(parts, list)
+        ):
+            raise ValueError("the manifest is missing a field or has a wrong one")
+        moment = datetime.fromisoformat(trashed_at)
+        if moment.tzinfo is None:
+            moment = moment.astimezone()
+        return cls(
+            id=path.name,
+            path=path,
+            session_id=session_id,
+            trashed_at=moment,
+            reason=reason,
+            title=title,
+            project_path=project_path,
+            parts=tuple(Part.from_dict(part) for part in parts),
+        )
+
 
 @dataclass(frozen=True)
 class Project:
     """A working directory Claude Code was started in, with the sessions it owns.
 
-    Grouped by the real path, never by the stored folder name. Two paths that
-    collide onto one folder name are two projects.
+    Grouped by real path. Two paths that collide onto one name are two projects.
     """
 
     path: str
