@@ -726,13 +726,20 @@ class EntriesPane(Table):
 
 
 class Lines(VerticalScroll):
-    """A lower right pane: one thing in full, as label and value lines."""
+    """A lower right pane: one thing in full, as label and value lines.
+
+    A line never wraps. A value with no room for all of it is cut in the
+    middle: a path at its slashes, any other text by the character.
+    """
 
     def __init__(self, id: str, title: str, fmt: Formatter, empty: str) -> None:
         super().__init__(id=id)
         self.border_title = title
         self.fmt = fmt
         self._empty = empty
+        self._lines: list[tuple[str, str]] = []
+        # The columns one line has. Unknown until the first resize.
+        self._room = 0
         self.text = ""
 
     def compose(self) -> ComposeResult:
@@ -741,12 +748,28 @@ class Lines(VerticalScroll):
 
     def show_lines(self, lines: list[tuple[str, str]] | None) -> None:
         """Show these lines, or the empty state when there are none."""
-        if not lines:
+        self._lines = list(lines or [])
+        self._paint()
+
+    def on_resize(self) -> None:
+        """Write the lines again when the room for them changes."""
+        room = self.scrollable_content_region.width
+        if room != self._room:
+            self._room = room
+            if self._lines:
+                self._paint()
+
+    def _paint(self) -> None:
+        """Put the lines on the screen, each one cut to the room it has."""
+        if not self._lines:
             self.text = self._empty
         else:
-            width = max(len(label) for label, _ in lines) + 1
+            width = max(len(label) for label, _ in self._lines) + 1
+            room = self._room - width - 1
             self.text = "\n".join(
-                f"{(label + ':').ljust(width)} {value}" for label, value in lines
+                f"{(label + ':').ljust(width)} "
+                f"{self.fmt.fit(value, room) if self._room > 0 else value}"
+                for label, value in self._lines
             )
         self.query_one(f"#{self.id}-text", Static).update(self.text)
 

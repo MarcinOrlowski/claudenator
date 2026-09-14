@@ -47,6 +47,12 @@ DetailsPane, EntryPane {
     padding: 0 1;
 }
 
+/* The pane cuts a long line itself. This is the net under it: no wrap, ever. */
+DetailsPane Static, EntryPane Static {
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
 FilterBox {
     width: 1fr;
     height: 3;
