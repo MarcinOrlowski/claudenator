@@ -1800,6 +1800,8 @@ async def test_the_about_key_works_on_every_pane_and_in_the_trash(
         (AboutScreen, TrashScreen),
     ]
     assert listed == ["About"] * 4
+
+
 async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wraps(
     fake: FakeClaude, settings: Settings
 ) -> None:
