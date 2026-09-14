@@ -58,3 +58,27 @@ FilterBox {
     height: 3;
     padding: 0 1;
 }
+
+/* The About box sits in the middle of the window, over the panes. */
+AboutScreen {
+    align: center middle;
+}
+
+/* As wide and as tall as its lines, but never past the window: a small
+   window scrolls the box instead of breaking the QR code. */
+#about {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    padding: 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+#about-text {
+    width: auto;
+    text-align: center;
+    text-wrap: nowrap;
+}

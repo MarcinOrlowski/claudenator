@@ -16,7 +16,7 @@ build-backend = "hatchling.build"
 [project]
 name = "conclaude"
 dynamic = ["version"]
-description = "The only Claude Code session manager you need."
+description = "The only Claude Code session manager you needca"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
@@ -32,7 +32,7 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Topic :: Utilities",
 ]
-dependencies = ["textual>=8,<9"]
+dependencies = ["textual>=8,<9", "qrcat>=1,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]

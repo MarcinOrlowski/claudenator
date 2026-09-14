@@ -32,6 +32,7 @@ SHARED_BINDINGS = [
     Binding("tab", "app.focus_next", "Next pane"),
     Binding("shift+tab", "app.focus_previous", "Previous pane", show=False),
     Binding("r", "screen.reload", "Reload"),
+    Binding("question_mark", "app.about", "About", key_display="?"),
     Binding("q", "app.quit", "Quit"),
 ]
 
