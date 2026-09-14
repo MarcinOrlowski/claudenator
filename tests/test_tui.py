@@ -1800,6 +1800,7 @@ def test_the_stylesheet_names_no_literal_colour() -> None:
             if token.startswith("$"):
                 variables.add(token)
                 continue
+
             try:
                 Color.parse(token)
             except ColorParseError:

@@ -24,10 +24,9 @@ from textual.widgets import Footer, Static
 
 from conclaude import __author__, __description__, __title__, __url__, __version__
 
-# The lowest error level makes the smallest code that holds the address, and a
-# code on a screen loses none of its modules.
+# The lowest error level makes the smallest code that holds the address
 QR_ERROR: Final = "L"
-# The quiet zone a reader needs around the code, in modules.
+# The quiet zone a reader needs around the QR code, in modules.
 QR_BORDER: Final = 2
 
 
@@ -37,11 +36,7 @@ def qr_of(url: str) -> str:
 
 
 def about_text() -> str:
-    """What the About box says: the name, the version, the owner, the address.
-
-    The address comes twice: as a QR code to point a phone at, and under it
-    as text to read.
-    """
+    """Content of the About box."""
     return "\n".join(
         [
             f"{__title__} {__version__}",
@@ -54,11 +49,7 @@ def about_text() -> str:
 
 
 class AboutScreen(ModalScreen[None]):
-    """A box over the panes: what this tool is, and where it lives.
-
-    The box only shows. It changes nothing. Any of its keys closes it, and
-    the pane below has the focus again.
-    """
+    """About popup"""
 
     BINDINGS = [
         Binding("escape", "close", "Close"),
