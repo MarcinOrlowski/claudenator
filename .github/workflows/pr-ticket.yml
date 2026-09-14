@@ -13,7 +13,7 @@ name: "Ticket"
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ master, dev ]
     # "edited" so adding the reference (or `NO_TICKET`) to the description
     # re-runs the check.
     types: [ opened, synchronize, reopened, edited ]

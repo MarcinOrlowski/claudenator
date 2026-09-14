@@ -41,7 +41,7 @@ jobs:
 
     steps:
       - name: "Dispatch sync check for open PRs"
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           script: |
             const targetBranch = 'dev';
