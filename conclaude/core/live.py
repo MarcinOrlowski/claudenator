@@ -1,12 +1,23 @@
-"""Which sessions a Claude Code process is running right now.
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
 
-Claude Code writes a process marker to ``sessions/<pid>.json`` when it
-starts. The marker names the session and records ``procStart``, the start
-time of the process as the kernel counts it. A crash leaves the marker
-behind, and the pid can be handed to an unrelated process later. So a marker
-alone proves nothing. A session is live only when the process named by the
-marker exists and its start time in ``/proc/<pid>/stat`` is the one the
-marker recorded.
+Which sessions a Claude Code process is running right now.
+
+Claude Code writes a process marker to ``sessions/<pid>.json`` when it starts.
+The marker names the session and records ``procStart``, the start time of the
+process as the kernel counts it. A crash leaves the marker behind, and the pid
+can be handed to an unrelated process later. So a marker alone proves nothing.
+A session is live only when the process named by the marker exists and its start
+time in ``/proc/<pid>/stat`` is the one the marker recorded.
 """
 
 from __future__ import annotations
@@ -39,11 +50,7 @@ class LiveSession:
 
 
 def parse_start_time(stat: str) -> int | None:
-    """The process start time out of the text of ``/proc/<pid>/stat``.
-
-    The process name sits in parentheses and may contain spaces, so the
-    fields are counted from the last closing parenthesis, not from the start.
-    """
+    """The process start time out of the text of ``/proc/<pid>/stat``."""
     _head, paren, tail = stat.rpartition(")")
     if not paren:
         return None
@@ -58,7 +65,7 @@ def parse_start_time(stat: str) -> int | None:
 
 
 def process_start_time(proc_dir: Path, pid: int) -> int | None:
-    """The start time of a running process, or None when there is no such process."""
+    """The start time of a running process, or None if no such process."""
     try:
         with open(proc_dir / str(pid) / "stat", "r", encoding="ascii") as handle:
             return parse_start_time(handle.read())
@@ -108,9 +115,8 @@ def iter_markers(sessions_dir: Path) -> list[tuple[int, Path]]:
 def find_live(settings: Settings) -> dict[str, LiveSession]:
     """Session id to live session, for every marker whose process really runs.
 
-    A marker counts only when the process exists and started when the
-    marker says it did. A marker that names no session, no pid, or no start
-    time is ignored.
+    A marker counts only when the process exists and started when the marker says
+    it did. A marker that names no session, no pid, or no start time is ignored.
     """
     live: dict[str, LiveSession] = {}
     for pid_from_name, path in iter_markers(settings.sessions_dir):

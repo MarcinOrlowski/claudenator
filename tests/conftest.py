@@ -1,7 +1,20 @@
-"""Shared fixtures: a fake Claude Code folder and settings that point at it."""
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
+"""
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from pathlib import Path
 
 import pytest
@@ -9,6 +22,20 @@ import pytest
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
 from tests.fabricate import FakeClaude, FakeProc, make_settings
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
+    """Run an ``async def`` test to its end on a fresh event loop.
+
+    The screen tests drive Textual through its pilot, which is async. This
+    keeps them plain coroutines and asks for no extra plugin.
+    """
+    if not inspect.iscoroutinefunction(pyfuncitem.obj):
+        return None
+    wanted = inspect.signature(pyfuncitem.obj).parameters
+    asyncio.run(pyfuncitem.obj(**{name: pyfuncitem.funcargs[name] for name in wanted}))
+    return True
 
 
 @pytest.fixture

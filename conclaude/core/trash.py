@@ -1,8 +1,14 @@
-"""Move a session to the Trash, and bring it back or remove it for good.
-
-CC writes its parts to many places, all named after the session id. Trashing moves
-every one of those parts into one entry folder under the Trash. Nothing shared
-between sessions is touched.
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
 """
 
 from __future__ import annotations
@@ -47,10 +53,7 @@ NAME_RETRIES = 100
 
 @contextmanager
 def held_lock(settings: Settings) -> Generator[None, None, None]:
-    """Hold the Trash lock. Waits until any other holder lets go.
-
-    Only a move uses this lock.
-    """
+    """Hold the lock to avoid concurrent Trash access by multiple instances."""
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     with open(settings.trash_lock_file, "ab") as handle:
         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -61,7 +64,7 @@ def held_lock(settings: Settings) -> Generator[None, None, None]:
 
 
 def _matching(folder: Path, pattern: str) -> list[Path]:
-    """The entries directly under a folder whose name fits a shell pattern."""
+    """The entries directly in a folder"""
     try:
         entries = os.scandir(folder)
     except OSError:
@@ -275,10 +278,9 @@ def _climbs(path: Path) -> bool:
 
 
 def _check_part(settings: Settings, entry: TrashEntry, part: Part) -> tuple[Path, Path]:
-    """Checks where a part sits in the entry and where it goes back to.
+    """Checks where a part sits in the entry and where it goes back to."""
 
-    A manifest is a plain file and may have been edited, so its paths are not trusted.
-    """
+    # A manifest is a plain file and may have been edited, so its paths are not trusted.
     stored = entry.path / part.stored
     if (
         part.stored.is_absolute()
@@ -302,7 +304,7 @@ def _check_part(settings: Settings, entry: TrashEntry, part: Part) -> tuple[Path
 
 
 def restore_entry(settings: Settings, entry: TrashEntry) -> TrashEntry:
-    """Put parts of an entry back where they came from and drop the Trash entry."""
+    """Put parts of an entry back and drop the Trash entry."""
     with held_lock(settings):
         current = read_entry(_entry_dir(settings, entry))
         if current is None:

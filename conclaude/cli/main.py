@@ -1,4 +1,15 @@
-"""``conclaude list`` and ``conclaude info``: a thin shell over the session store."""
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
+"""
 
 from __future__ import annotations
 
@@ -10,7 +21,7 @@ from pathlib import Path
 from conclaude import __version__
 from conclaude.core.errors import ConclaudeError
 from conclaude.core.format import Formatter
-from conclaude.core.model import Session, SessionDetails
+from conclaude.core.model import Session
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
 
@@ -19,13 +30,17 @@ TITLE_WIDTH = 48
 
 def titled(session: Session, fmt: Formatter) -> str:
     """The title with its marks, cut to the table width."""
-    text = session.title
-    tag = fmt.marks(session)
-    if tag:
-        text = f"{text} {tag}"
+    text = fmt.titled(session)
     if len(text) > TITLE_WIDTH:
         text = text[: TITLE_WIDTH - 3].rstrip() + "..."
     return text
+
+
+def open_screen(settings: Settings) -> int:
+    """Run the TUI."""
+    from conclaude.tui.app import run
+
+    return run(settings)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,51 +123,13 @@ def cmd_list(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> i
     return 0
 
 
-def _info_lines(details: SessionDetails, fmt: Formatter) -> list[tuple[str, str]]:
-    session = details.session
-    lines = [
-        ("Id", session.id),
-        ("Title", f"{session.title}  (from {session.title_source})"),
-        ("Project", f"{session.project_path}  (from {session.project_source})"),
-        ("Folder", session.project_key),
-        ("Git branch", session.git_branch or "-"),
-        ("Created", fmt.timestamp(session.created)),
-        ("Last used", fmt.timestamp(session.last_used)),
-        ("Claude Code", session.version or "-"),
-        (
-            "Transcript",
-            f"{fmt.size(session.transcript_size)}  {session.transcript_path}",
-        ),
-    ]
-    if session.sidecar_path is not None:
-        agents = session.subagent_count
-        noun = "subagent transcript" if agents == 1 else "subagent transcripts"
-        lines.append(
-            (
-                "Sidecar",
-                f"{fmt.size(session.sidecar_size)}  {session.sidecar_path}  ({agents} {noun})",
-            )
-        )
-    else:
-        lines.append(("Sidecar", "none"))
-    lines.append(("Total", fmt.size(session.size)))
-    if session.is_fork:
-        lines.append(("Fork of", session.fork_parent or "-"))
-        lines.append(
-            ("Inherited", f"{fmt.size(details.inherited_bytes)} came from the parent")
-        )
-    lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
-    lines.append(("Damaged", "yes" if session.damaged else "no"))
-    return lines
-
-
 def cmd_info(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> int:
     """Print one session in full."""
     details = store.details(args.session_id)
     if args.json:
         print(json.dumps(details.to_dict(), indent=2))
         return 0
-    lines = _info_lines(details, fmt)
+    lines = fmt.describe(details)
     width = max(len(label) for label, _ in lines) + 1
     for label, value in lines:
         print(f"{(label + ':').ljust(width)} {value}")
@@ -163,10 +140,9 @@ def main(argv: list[str] | None = None) -> int:
     """Run the command line. Returns the exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command is None:
-        parser.print_help()
-        return 0
     settings = settings_from(args)
+    if args.command is None:
+        return open_screen(settings)
     store = SessionStore(settings)
     fmt = Formatter(settings)
     try:

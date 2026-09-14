@@ -1,8 +1,14 @@
-"""Find sessions on the disk and read their cheap fields.
-
-Cheap means the file name, one ``stat`` call, the first few hundred records
-and one chunk from the end of the file. A transcript is never loaded whole
-into memory, because they reach tens of megabytes.
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
 """
 
 from __future__ import annotations
@@ -26,12 +32,7 @@ SUBAGENT_DIR = "subagents"
 
 
 def iter_project_dirs(projects_dir: Path) -> Iterator[Path]:
-    """The folders under ``projects/`` that Claude Code could have made.
-
-    Claude Code names a project folder by replacing every character that is
-    not a letter or a digit with a dash. A name that holds any other
-    character, such as ``lost+found``, cannot be a project and is skipped.
-    """
+    """The folders under ``projects/`` that Claude Code could have made."""
     try:
         entries = sorted(os.scandir(projects_dir), key=lambda entry: entry.name)
     except OSError:
@@ -42,11 +43,7 @@ def iter_project_dirs(projects_dir: Path) -> Iterator[Path]:
 
 
 def iter_transcripts(project_dir: Path) -> Iterator[tuple[str, Path]]:
-    """The ``(session id, transcript path)`` pairs inside one project folder.
-
-    Only a file named ``<uuid>.jsonl`` is a transcript. Anything else, such as
-    an old-style ``agent-*.jsonl`` subagent file, is not a session.
-    """
+    """The ``(session id, transcript path)`` pairs inside one project folder."""
     try:
         entries = sorted(os.scandir(project_dir), key=lambda entry: entry.name)
     except OSError:
@@ -108,7 +105,7 @@ class CheapFields:
 
 
 def parse_timestamp(value: Any) -> datetime | None:
-    """An ISO 8601 timestamp as Claude Code writes it, or None."""
+    """An Claude timestamp or None."""
     if not isinstance(value, str) or not value:
         return None
     try:
@@ -137,7 +134,7 @@ def is_human_message(record: dict[str, Any]) -> bool:
     """True for a record that holds a message the user really typed.
 
     Claude Code marks these with ``origin.kind == "human"``. Injected records
-    (caveats, reminders, task notifications) carry another kind or none.
+    (caveats, reminders, task notifications) use another "kind" (or none).
     """
     if record.get("type") != "user" or record.get("isMeta"):
         return False
@@ -243,12 +240,7 @@ def _read_head(
 
 
 def _read_tail(transcript: Path, settings: Settings, fields: CheapFields) -> None:
-    """Find the last custom title and last prompt from a chunk at the end.
-
-    The chunk starts at ``tail_bytes`` and doubles up to ``tail_bytes_max``
-    while the records we want are not in it. A single huge record at the end
-    of a file (a big tool result) is the usual reason to grow.
-    """
+    """Find the last custom title and last prompt from a chunk at the end."""
     size = os.path.getsize(transcript)
     want = settings.tail_bytes
     while True:
@@ -292,8 +284,7 @@ def read_cheap(transcript: Path, session_id: str, settings: Settings) -> CheapFi
 
     A few records from the top give cwd, branch, version, creation time, the
     first human message and the fork check. A chunk from the end gives the
-    last custom title and the last prompt. A transcript that cannot be read
-    at all comes back marked damaged, with every field empty.
+    last custom title and the last prompt.
     """
     fields = CheapFields()
     try:
@@ -315,8 +306,7 @@ def _is_foreign(record: dict[str, Any], session_id: str) -> bool:
 def inherited_bytes(transcript: Path, session_id: str) -> int:
     """Bytes of the records a fork copied from its parent.
 
-    This reads every line of the one transcript, once. It is the only thing
-    in this module that does, and it runs only for one session on request.
+    Heavy as it reads every line of the transcript. Do not run unless user request
     """
     total = 0
     try:

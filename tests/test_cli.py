@@ -1,4 +1,15 @@
-"""The command line, driven through ``main`` against a fake folder."""
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
+"""
 
 from __future__ import annotations
 
@@ -274,13 +285,33 @@ def test_info_with_an_ambiguous_prefix_fails(
     assert "'abcdef' matches 2 sessions" in err
 
 
-def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
-    """No command prints help."""
-    code = main([])
+def test_no_command_opens_the_screen(
+    settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No command opens the screen."""
+    opened: list[Settings] = []
+    monkeypatch.setattr(
+        "conclaude.cli.main.open_screen", lambda settings: opened.append(settings) or 0
+    )
+
+    code, out, _err = run(capsys, settings)
+
+    assert code == 0
+    assert out == ""
+    assert [given.claude_dir for given in opened] == [settings.claude_dir]
+    assert opened[0].data_dir == settings.data_dir
+
+
+def test_help_flag_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
+    """Help flag prints help."""
+    with pytest.raises(SystemExit) as stop:
+        main(["--help"])
     out, _err = capsys.readouterr()
     plain = re.sub(r"\x1b\[[0-9;]*m", "", out)
 
-    assert code == 0
+    assert stop.value.code == 0
     assert plain.startswith("usage: conclaude")
 
 

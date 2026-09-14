@@ -1,4 +1,15 @@
-"""The session store: the only thing that reads or changes session data."""
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
+"""
 
 from __future__ import annotations
 
@@ -36,6 +47,23 @@ from conclaude.core.trash import (
 )
 
 
+def projects_of(sessions: list[Session]) -> list[Project]:
+    """The projects that own these sessions, grouped by real path, sorted by path."""
+    groups: dict[str, list[Session]] = {}
+    for session in sessions:
+        groups.setdefault(session.project_path, []).append(session)
+    projects = [
+        Project(
+            path=path,
+            keys=tuple(sorted({session.project_key for session in found})),
+            sessions=tuple(found),
+        )
+        for path, found in groups.items()
+    ]
+    projects.sort(key=lambda project: project.path)
+    return projects
+
+
 class SessionStore:
     """Every session on this machine, seen as one collection."""
 
@@ -63,19 +91,7 @@ class SessionStore:
 
     def list_projects(self) -> list[Project]:
         """Every project that still has a session, grouped by real path."""
-        groups: dict[str, list[Session]] = {}
-        for session in self.list_sessions():
-            groups.setdefault(session.project_path, []).append(session)
-        projects = [
-            Project(
-                path=path,
-                keys=tuple(sorted({session.project_key for session in sessions})),
-                sessions=tuple(sessions),
-            )
-            for path, sessions in groups.items()
-        ]
-        projects.sort(key=lambda project: project.path)
-        return projects
+        return projects_of(self.list_sessions())
 
     def get_session(self, session_id: str) -> Session | None:
         """One session by its full id, or None."""
@@ -101,8 +117,11 @@ class SessionStore:
         return matches[0]
 
     def details(self, wanted: str) -> SessionDetails:
+        """One session in full, by its id or a unique prefix of it."""
+        return self.details_of(self.find_session(wanted))
+
+    def details_of(self, session: Session) -> SessionDetails:
         """One session in full. For a fork, this reads the whole transcript once."""
-        session = self.find_session(wanted)
         inherited = 0
         if session.is_fork:
             inherited = inherited_bytes(session.transcript_path, session.id)

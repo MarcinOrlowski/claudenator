@@ -1,16 +1,21 @@
-"""Turns moments, sizes and marks into text for a human.
-
-One place, so the command line and the screen always agree. Every choice
-comes from the settings object: how a time is shown (absolute, relative, or
-both) and the pattern for the absolute form. JSON output does not pass
-through here; it uses ISO 8601 to the second.
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from conclaude.core.model import Session
+from conclaude.core.model import Session, SessionDetails
 from conclaude.core.settings import Settings
 
 TIME_FORMATS = ("absolute", "relative", "both")
@@ -18,7 +23,7 @@ UNITS = (("y", 365 * 86400), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1))
 
 
 class Formatter:
-    """Text for a human, the way the settings ask for it."""
+    """Helper to format values in human friendly form."""
 
     def __init__(self, settings: Settings, now: datetime | None = None) -> None:
         if settings.time_format not in TIME_FORMATS:
@@ -30,18 +35,14 @@ class Formatter:
         self._now = now
 
     def now(self) -> datetime:
-        """The current moment. Fixed only when a test asked for it."""
         return self._now if self._now is not None else datetime.now(timezone.utc)
 
     def absolute(self, moment: datetime) -> str:
-        """A moment in the user's own time zone, to the second."""
         return moment.astimezone().strftime(self.settings.time_pattern)
 
     def relative(self, moment: datetime) -> str:
-        """How long ago a moment was: ``3d 23h ago``, ``45s ago``, ``just now``.
-
-        The largest unit is shown, and the one below it when it is not zero.
-        A moment in the future reads ``in 3m``.
+        """Past stamps go : ``3d 23h ago``, ``45s ago``, ``just now``, future
+        ``in 3m``. The largest unit is shown, and the one below when it is not zero.
         """
         seconds = int((self.now() - moment).total_seconds())
         future = seconds < 0
@@ -60,7 +61,7 @@ class Formatter:
         return "just now"
 
     def timestamp(self, moment: datetime | None) -> str:
-        """A moment, shown the way the settings say. ``-`` when there is none."""
+        """Formats stamp or returns ``-`` when there is none."""
         if moment is None:
             return "-"
         if self.settings.time_format == "relative":
@@ -70,7 +71,7 @@ class Formatter:
         return self.absolute(moment)
 
     def size(self, size: int) -> str:
-        """Bytes as a short string: ``12B``, ``3.4K``, ``1.2M``."""
+        """Byte size in short form: ``12B``, ``3.4K``, ``1.2M``."""
         value = float(size)
         for unit in ("B", "K", "M", "G", "T"):
             if value < 1024 or unit == "T":
@@ -81,7 +82,7 @@ class Formatter:
         return f"{int(value)}B"
 
     def marks(self, session: Session) -> str:
-        """The small marks that sit on a title: live, fork, damaged."""
+        """The session state: live, fork, damaged."""
         parts = []
         if session.live:
             parts.append("[live]")
@@ -90,3 +91,50 @@ class Formatter:
         if session.damaged:
             parts.append("[damaged]")
         return " ".join(parts)
+
+    def titled(self, session: Session) -> str:
+        """The title with its marks after it."""
+        tag = self.marks(session)
+        return f"{session.title} {tag}" if tag else session.title
+
+    def describe(self, details: SessionDetails) -> list[tuple[str, str]]:
+        """One session in full, as label and value pairs, in reading order."""
+        session = details.session
+        lines = [
+            ("Id", session.id),
+            ("Title", f"{session.title}  (from {session.title_source})"),
+            ("Project", f"{session.project_path}  (from {session.project_source})"),
+            ("Folder", session.project_key),
+            ("Git branch", session.git_branch or "-"),
+            ("Created", self.timestamp(session.created)),
+            ("Last used", self.timestamp(session.last_used)),
+            ("Claude Code", session.version or "-"),
+            (
+                "Transcript",
+                f"{self.size(session.transcript_size)}  {session.transcript_path}",
+            ),
+        ]
+        if session.sidecar_path is not None:
+            agents = session.subagent_count
+            noun = "subagent transcript" if agents == 1 else "subagent transcripts"
+            lines.append(
+                (
+                    "Sidecar",
+                    f"{self.size(session.sidecar_size)}  {session.sidecar_path}"
+                    f"  ({agents} {noun})",
+                )
+            )
+        else:
+            lines.append(("Sidecar", "none"))
+        lines.append(("Total", self.size(session.size)))
+        if session.is_fork:
+            lines.append(("Fork of", session.fork_parent or "-"))
+            lines.append(
+                (
+                    "Inherited",
+                    f"{self.size(details.inherited_bytes)} came from the parent",
+                )
+            )
+        lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
+        lines.append(("Damaged", "yes" if session.damaged else "no"))
+        return lines

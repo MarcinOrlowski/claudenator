@@ -1,4 +1,15 @@
-"""The things the store hands out. Plain data. Nothing in here touches the disk."""
+"""
+##################################################################################
+#
+# conClaude by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/conclaude
+#
+##################################################################################
+"""
 
 from __future__ import annotations
 
@@ -15,7 +26,7 @@ def _iso(value: datetime | None) -> str | None:
 
 @dataclass(frozen=True)
 class Session:
-    """One Claude Code conversation"""
+    """Single Claude Code conversation"""
 
     id: str
     project_key: str
@@ -44,7 +55,7 @@ class Session:
 
     @property
     def is_fork(self) -> bool:
-        """True when the session carries records copied from another session."""
+        """True when the session waas forked from another session."""
         return self.fork_parent is not None
 
     def to_dict(self) -> dict[str, Any]:
@@ -89,11 +100,11 @@ class SessionDetails:
 
 @dataclass(frozen=True)
 class Part:
-    """One piece of a session on the disk, and where it belongs.
+    """One piece of a session.
 
     ``original`` is the absolute path the part lives at under Claude Code's
     folder. ``stored`` is where it sits inside a Trash entry, relative to the
-    entry folder, in the same shape it came from.
+    entry folder.
     """
 
     kind: str
