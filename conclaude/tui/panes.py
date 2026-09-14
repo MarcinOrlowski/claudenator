@@ -581,7 +581,11 @@ class SessionsPane(Table):
             self.add_column(labels["project"], key="project", width=project_width)
         for session in self._rows():
             cells: list[Text | str] = [
-                Text(self.fmt.titled(session), no_wrap=True, overflow="ellipsis"),
+                Text(
+                    self.fmt.title(self.fmt.titled(session), title_width),
+                    no_wrap=True,
+                    overflow="ellipsis",
+                ),
                 self.fmt.timestamp(session.last_used),
                 Text(self.fmt.size(session.size), justify="right"),
                 # Turn count: filled by a deep scan, which does not exist yet.
@@ -703,7 +707,11 @@ class EntriesPane(Table):
         self.add_column(ENTRY_COLUMNS["project"], key="project", width=project_width)
         for entry in self._rows():
             self.add_row(
-                Text(entry.title, no_wrap=True, overflow="ellipsis"),
+                Text(
+                    self.fmt.title(entry.title, title_width),
+                    no_wrap=True,
+                    overflow="ellipsis",
+                ),
                 self.fmt.timestamp(entry.trashed_at),
                 Text(self.fmt.size(entry.size), justify="right"),
                 Text(

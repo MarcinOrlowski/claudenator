@@ -162,12 +162,33 @@ def test_the_mark_and_the_share_of_the_start_come_from_the_settings() -> None:
     """The mark and the share of the start come from the settings."""
     path = "foo/bar/long/long2/other/long"
 
-    assert Formatter(Settings(path_ellipsis="...")).path(path, 12) == "foo/.../long"
+    assert Formatter(Settings(cut_mark="...")).path(path, 12) == "foo/.../long"
     assert (
-        Formatter(Settings(path_head_share=0.0)).path(path, 20) == "…/long2/other/long"
+        Formatter(Settings(cut_head_share=0.0)).path(path, 20) == "…/long2/other/long"
     )
     assert (
-        Formatter(Settings(path_head_share=0.5)).path(path, 20) == "foo/bar/long/…/long"
+        Formatter(Settings(cut_head_share=0.5)).path(path, 20) == "foo/bar/long/…/long"
+    )
+
+
+def test_a_long_title_is_cut_in_the_middle_by_the_character_and_its_end_stays() -> None:
+    """A long title is cut in the middle, by the character. Its end and its marks stay.
+
+    A title is not cut at its spaces: one long word would take the rest with it.
+    """
+    fmt = Formatter(Settings())
+    title = "konfigurator-vs-api-round-2 [live]"
+
+    assert fmt.title(title, 20) == "konf…-round-2 [live]"
+    assert fmt.title(title, 12) == "ko…-2 [live]"
+    assert fmt.title(title, 1) == "]"
+    assert fmt.title(title, 0) == ""
+    assert fmt.title("Short", 30) == "Short"
+    assert Formatter(Settings(cut_head_share=0.0)).title(title, 20) == (
+        "…-api-round-2 [live]"
+    )
+    assert Formatter(Settings(cut_head_share=1.0)).title(title, 20) == (
+        "konfigurator-vs-api…"
     )
 
 

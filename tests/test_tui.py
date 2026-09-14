@@ -1485,7 +1485,7 @@ async def test_a_long_project_path_is_cut_in_the_middle_and_keeps_its_end(
     assert shown == [ALL_PROJECTS, fmt.path(one, room), fmt.path(two, room)]
     assert shown[1].startswith("/home/") and shown[1].endswith("/app-00")
     assert shown[2].endswith("/app-01")
-    assert settings.path_ellipsis in shown[1]
+    assert settings.cut_mark in shown[1]
     assert len(shown[1]) <= room
     assert ids == [None, one, two]
     assert chosen == one
@@ -1555,7 +1555,7 @@ async def test_the_project_column_cuts_a_long_path_in_the_middle_too(
     assert 0 < width < len(one)
     assert cells == [fmt.path(one, width), fmt.path(two, width)]
     assert cells[0].endswith("/app-00") and cells[1].endswith("/app-01")
-    assert settings.path_ellipsis in cells[0]
+    assert settings.cut_mark in cells[0]
 
 
 async def test_the_trash_table_cuts_a_long_project_path_in_the_middle_too(
@@ -1576,7 +1576,73 @@ async def test_the_trash_table_cuts_a_long_project_path_in_the_middle_too(
 
     assert 0 < width < len(one)
     assert cell == fmt.path(one, width)
-    assert cell.endswith("/app-00") and settings.path_ellipsis in cell
+    assert cell.endswith("/app-00") and settings.cut_mark in cell
+
+
+TALE = (
+    "This session is being continued from a previous conversation "
+    "that ran out of context"
+)
+
+
+async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end_and_its_marks(
+    fake: FakeClaude, proc: FakeProc, settings: Settings
+) -> None:
+    """A long title is cut in the middle, by the character. Its end and its marks stay."""
+    one, two = new_id(), new_id()
+    fake.transcript(
+        "/p/a",
+        one,
+        session_records(one, "/p/a", custom_title=f"{TALE}, part one"),
+        mtime=3000,
+    )
+    fake.transcript(
+        "/p/a",
+        two,
+        session_records(two, "/p/a", custom_title=f"{TALE}, part two"),
+        mtime=2000,
+    )
+    fake.marker(100, two, 5000, name=f"{TALE}, part two")
+    proc.stat(100, 5000)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        width = column_width(table, "title")
+        cells = [str(table.get_cell(sid, "title")) for sid in (one, two)]
+
+    assert 0 < width < len(TALE)
+    assert cells == [
+        fmt.title(f"{TALE}, part one", width),
+        fmt.title(f"{TALE}, part two [live]", width),
+    ]
+    assert cells[0].endswith("part one") and cells[1].endswith("part two [live]")
+    assert settings.cut_mark in cells[0]
+
+
+async def test_the_trash_table_cuts_a_long_title_in_the_middle_too(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Title column of the Trash table cuts a long title the same way."""
+    sid = new_id()
+    fake.transcript(
+        "/p/a", sid, session_records(sid, "/p/a", custom_title=f"{TALE}, part one")
+    )
+    entry = SessionStore(settings).trash(sid)
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        width = column_width(table, "title")
+        cell = str(table.get_cell(entry.id, "title"))
+
+    assert 0 < width < len(TALE)
+    assert cell == fmt.title(entry.title, width)
+    assert cell.endswith("part one") and settings.cut_mark in cell
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:
