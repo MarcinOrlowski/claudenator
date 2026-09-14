@@ -21,7 +21,7 @@ import pytest
 
 from conclaude.core.errors import AmbiguousSessionId, SessionNotFound
 from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
+from conclaude.core.store import SORT_COLUMNS, SessionStore, sort_key
 from tests.fabricate import (
     FakeClaude,
     dump_line,
@@ -462,6 +462,41 @@ def test_sort_order_comes_from_the_settings(
     titles = [session.title for session in SessionStore(settings).list_sessions()]
 
     assert titles == ["alpha", "beta"]
+
+
+def test_any_column_can_sort(fake: FakeClaude, settings: Settings) -> None:
+    """Any column can sort. An unknown column, and the empty Msgs, keep last used."""
+    older, newer = new_id(), new_id()
+    fake.transcript(
+        "/p/z",
+        older,
+        session_records(
+            older, "/p/z", custom_title="beta", started="2026-09-14T06:00:00.000Z"
+        ),
+        mtime=1_700_000_000,
+    )
+    fake.transcript(
+        "/p/a",
+        newer,
+        session_records(newer, "/p/a", custom_title="Alpha"),
+        mtime=1_800_000_000,
+    )
+    fake.sidecar("/p/z", older, bytes_each=5000)
+    sessions = SessionStore(settings).list_sessions()
+
+    ordered = {
+        column: [s.id for s in sorted(sessions, key=sort_key(column))]
+        for column in (*SORT_COLUMNS, "nonsense")
+    }
+
+    assert [s.id for s in sessions] == [newer, older]
+    assert ordered["title"] == [newer, older]
+    assert ordered["last_used"] == [older, newer]
+    assert ordered["created"] == [older, newer]
+    assert ordered["size"] == [newer, older]
+    assert ordered["msgs"] == [newer, older]
+    assert ordered["project"] == [newer, older]
+    assert ordered["nonsense"] == [older, newer]
 
 
 def test_a_missing_claude_folder_lists_nothing(settings: Settings) -> None:

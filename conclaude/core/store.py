@@ -46,6 +46,25 @@ from conclaude.core.trash import (
     trash_session,
 )
 
+# The columns a session list can be ordered by.
+SORT_COLUMNS = ("title", "last_used", "created", "size", "msgs", "project")
+
+
+def sort_key(column: str) -> Callable[[Session], Any]:
+    """The key that orders sessions by ``column``. An unknown column orders by last use."""
+    if column == "title":
+        return lambda session: session.title.casefold()
+    if column == "created":
+        return lambda session: session.created or session.last_used
+    if column == "size":
+        return lambda session: session.size
+    if column == "msgs":
+        # Turn count: filled by a deep scan, which does not exist yet.
+        return lambda _: 0
+    if column == "project":
+        return lambda session: session.project_path
+    return lambda session: session.last_used
+
 
 def projects_of(sessions: list[Session]) -> list[Project]:
     """The projects that own these sessions, grouped by real path, sorted by path."""
@@ -86,7 +105,10 @@ class SessionStore:
                 )
                 if session is not None:
                     sessions.append(session)
-        sessions.sort(key=self._sort_key(), reverse=self.settings.sort_descending)
+        sessions.sort(
+            key=sort_key(self.settings.sort_column),
+            reverse=self.settings.sort_descending,
+        )
         return sessions
 
     def list_projects(self) -> list[Project]:
@@ -256,15 +278,3 @@ class SessionStore:
             pass
         self._history = found
         return found
-
-    def _sort_key(self) -> Callable[[Session], Any]:
-        column = self.settings.sort_column
-        if column == "title":
-            return lambda session: session.title.lower()
-        if column == "size":
-            return lambda session: session.size
-        if column == "project_path":
-            return lambda session: session.project_path
-        if column == "created":
-            return lambda session: session.created or session.last_used
-        return lambda session: session.last_used

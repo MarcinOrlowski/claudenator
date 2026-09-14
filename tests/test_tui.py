@@ -25,7 +25,13 @@ from conclaude.core.format import Formatter
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
 from conclaude.tui.app import ConclaudeApp, MainScreen
-from conclaude.tui.panes import ALL_PROJECTS, DetailsPane, ProjectsPane, SessionsPane
+from conclaude.tui.panes import (
+    ALL_PROJECTS,
+    DetailsPane,
+    FilterBox,
+    ProjectsPane,
+    SessionsPane,
+)
 from tests.fabricate import FakeClaude, FakeProc, new_id, session_records
 
 WIDE = (140, 40)
@@ -118,7 +124,7 @@ async def test_all_projects_shows_every_session_with_a_project_column(
         listed = rows(table)
         projects = [str(table.get_cell(sid, "project")) for sid in listed]
 
-    assert labels == ["Title", "Last used", "Size", "Msgs", "Project"]
+    assert labels == ["Title", "Last used ▼", "Size", "Msgs", "Project"]
     assert listed == [a1, a2, b1]
     assert projects == ["/p/a", "/p/a", "/p/b"]
 
@@ -139,7 +145,7 @@ async def test_choosing_a_project_shows_only_its_sessions(
         await pilot.pause()
         in_b = rows(table), app.query_one(ProjectsPane).selected_path
 
-    assert in_a == ([a1, a2], ["Title", "Last used", "Size", "Msgs"], "/p/a")
+    assert in_a == ([a1, a2], ["Title", "Last used ▼", "Size", "Msgs"], "/p/a")
     assert in_b == ([b1], "/p/b")
 
 
@@ -419,6 +425,319 @@ async def test_every_theme_the_library_ships_applies(
 
     assert applied == sorted(BUILTIN_THEMES)
     assert len(applied) >= 20
+
+
+def state(table: SessionsPane) -> tuple[list[str], str | None, tuple[str, bool]]:
+    """The rows, the selected id and the sort order, in one tuple."""
+    return rows(table), table.selected_id, table.sorting
+
+
+async def test_r_reloads_and_the_cursor_finds_its_session_by_id(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """R reloads. The cursor finds its session by id, not by row number."""
+    a1, a2, _b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("down", "tab", "down")
+        await pilot.pause()
+        before = table.selected_id, table.cursor_row, rows(table)
+        new = new_id()
+        fake.transcript(
+            "/p/a", new, session_records(new, "/p/a", custom_title="New"), mtime=4000
+        )
+        await pilot.press("r")
+        await pilot.pause()
+        after = table.selected_id, table.cursor_row, rows(table)
+        project = app.query_one(ProjectsPane).selected_path
+        text = app.query_one(DetailsPane).text
+
+    assert before == (a2, 1, [a1, a2])
+    assert after == (a2, 2, [new, a1, a2])
+    assert project == "/p/a"
+    assert f"Id:          {a2}" in text
+
+
+async def test_after_a_reload_a_gone_session_hands_its_row_to_the_next_one(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """After a reload a gone session hands its row to the one that replaced it."""
+    a1, a2, b1 = three_sessions(fake)
+    store = SessionStore(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab", "down")
+        await pilot.pause()
+        store.trash(a2)
+        await pilot.press("r")
+        await pilot.pause()
+        middle_gone = table.selected_id, table.cursor_row, rows(table)
+        store.trash(b1)
+        await pilot.press("r")
+        await pilot.pause()
+        last_gone = table.selected_id, table.cursor_row, rows(table)
+
+    assert middle_gone == (b1, 1, [a1, b1])
+    assert last_gone == (a1, 0, [a1])
+
+
+async def test_after_a_reload_a_gone_project_hands_its_line_to_the_next_one(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """After a reload a gone project hands its line to the one that replaced it."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        await pilot.press("down", "down")
+        await pilot.pause()
+        before = pane.selected_path
+        SessionStore(settings).trash(b1)
+        await pilot.press("r")
+        await pilot.pause()
+        prompts = [str(option.prompt) for option in pane.options]
+        after = pane.selected_path, rows(app.query_one(SessionsPane))
+
+    assert before == "/p/b"
+    assert prompts == [ALL_PROJECTS, "/p/a"]
+    assert after == ("/p/a", [a1, a2])
+
+
+def sized_sessions(fake: FakeClaude) -> tuple[str, str, str]:
+    """Three sessions whose order differs by last use, by title and by size.
+
+    Last used: a1, a2, b1. Title: b1 (Alpha), a1 (Mid), a2 (Zed).
+    Size: b1, a1, a2.
+    """
+    a1, a2, b1 = new_id(), new_id(), new_id()
+    fake.transcript(
+        "/p/a", a1, session_records(a1, "/p/a", custom_title="Mid"), mtime=3000
+    )
+    fake.transcript(
+        "/p/a", a2, session_records(a2, "/p/a", custom_title="Zed"), mtime=2000
+    )
+    fake.transcript(
+        "/p/b", b1, session_records(b1, "/p/b", custom_title="Alpha"), mtime=1000
+    )
+    fake.sidecar("/p/a", a1, bytes_each=100)
+    fake.sidecar("/p/b", b1, bytes_each=5000)
+    return a1, a2, b1
+
+
+async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The rows start at last used, newest first, as the settings say."""
+    a1, a2, b1 = sized_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        by_time = state(table), columns(table)
+
+    settings.sort_column = "title"
+    settings.sort_descending = False
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        by_title = state(table), columns(table)
+
+    assert by_time == (
+        ([a1, a2, b1], a1, ("last_used", True)),
+        ["Title", "Last used ▼", "Size", "Msgs", "Project"],
+    )
+    assert by_title == (
+        ([b1, a1, a2], b1, ("title", False)),
+        ["Title ▲", "Last used", "Size", "Msgs", "Project"],
+    )
+
+
+async def test_o_orders_by_the_next_column_and_the_cursor_stays_on_its_session(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """O orders by the next column, O turns it round. The cursor stays on its session."""
+    a1, a2, b1 = sized_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab", "down")
+        await pilot.pause()
+        seen = [state(table)]
+        for key in ("o", "O", "o", "o", "o", "o"):
+            await pilot.press(key)
+            await pilot.pause()
+            seen.append(state(table))
+        marked = columns(table)
+
+    assert seen == [
+        ([a1, a2, b1], a2, ("last_used", True)),
+        ([b1, a1, a2], a2, ("size", True)),
+        ([a2, a1, b1], a2, ("size", False)),
+        ([a1, a2, b1], a2, ("msgs", True)),
+        ([a1, a2, b1], a2, ("project", False)),
+        ([b1, a1, a2], a2, ("title", False)),
+        ([a1, a2, b1], a2, ("last_used", True)),
+    ]
+    assert marked == ["Title", "Last used ▼", "Size", "Msgs", "Project"]
+
+
+async def test_the_project_column_is_skipped_by_o_when_it_is_not_on_view(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Project column is skipped by o when it is not on view."""
+    sized_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("down", "tab")
+        await pilot.pause()
+        seen = []
+        for _ in range(4):
+            await pilot.press("o")
+            await pilot.pause()
+            seen.append(table.sorting[0])
+
+    assert seen == ["size", "msgs", "title", "last_used"]
+
+
+async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_round(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A click on a header orders by that column. A second click turns it round."""
+    a1, a2, b1 = sized_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab", "down")
+        await pilot.pause()
+        await pilot.click(SessionsPane, offset=(2, 1))
+        await pilot.pause()
+        once = state(table)
+        await pilot.click(SessionsPane, offset=(2, 1))
+        await pilot.pause()
+        twice = state(table)
+
+    assert once == ([b1, a1, a2], a2, ("title", False))
+    assert twice == ([a2, a1, b1], a2, ("title", True))
+
+
+async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Slash opens a box. The sessions narrow by title as you type, case aside."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        box = app.query_one("#sessions-filter", FilterBox)
+        at_start = box.display, "escape" in shown_keys(app)
+        await pilot.press("tab", "down", "down", "slash")
+        await pilot.pause()
+        opened = type(app.focused), box.display, shown_keys(app)
+        await pilot.press("a")
+        await pilot.pause()
+        after_a = rows(table), table.selected_id, table.filter_text
+        await pilot.press("2")
+        await pilot.pause()
+        after_a2 = rows(table), table.selected_id, table.filter_text
+        await pilot.press("escape")
+        await pilot.pause()
+        cleared = rows(table), table.selected_id, table.filter_text
+        closed = type(app.focused), box.display, "escape" in shown_keys(app)
+
+    assert at_start == (False, False)
+    assert opened == (FilterBox, True, {"escape": "Clear", "enter": "Done"})
+    assert after_a == ([a1, a2], a2, "a")
+    assert after_a2 == ([a2], a2, "a2")
+    assert cleared == ([a1, a2, b1], a2, "")
+    assert closed == (SessionsPane, False, False)
+
+
+async def test_enter_keeps_the_filter_and_escape_on_the_pane_clears_it(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Enter keeps the filter and goes back to the pane. Escape there clears it."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        box = app.query_one("#sessions-filter", FilterBox)
+        await pilot.press("tab", "slash", "b", "enter")
+        await pilot.pause()
+        kept = rows(table), table.selected_id, box.display, box.value
+        focused = type(app.focused)
+        keys = shown_keys(app)
+        await pilot.press("escape")
+        await pilot.pause()
+        cleared = rows(table), table.selected_id, box.display, table.filter_text
+        keys_after = shown_keys(app)
+
+    assert kept == ([b1], b1, True, "b")
+    assert focused is SessionsPane
+    assert keys["escape"] == "Clear filter"
+    assert keys["slash"] == "Filter"
+    assert cleared == ([a1, a2, b1], b1, False, "")
+    assert "escape" not in keys_after
+
+
+async def test_slash_on_the_projects_pane_narrows_the_projects_by_path(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Slash on the projects pane narrows the projects by path."""
+    _a1, _a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        pane = app.query_one(ProjectsPane)
+        box = app.query_one("#projects-filter", FilterBox)
+        await pilot.press("slash", "B", "enter")
+        await pilot.pause()
+        narrowed = [str(option.prompt) for option in pane.options]
+        focused = type(app.focused)
+        await pilot.press("down")
+        await pilot.pause()
+        chosen = pane.selected_path, rows(app.query_one(SessionsPane))
+        await pilot.press("escape")
+        await pilot.pause()
+        restored = [str(option.prompt) for option in pane.options]
+        after = pane.selected_path, pane.highlighted, box.display
+
+    assert narrowed == [ALL_PROJECTS, "/p/b"]
+    assert focused is ProjectsPane
+    assert chosen == ("/p/b", [b1])
+    assert restored == [ALL_PROJECTS, "/p/a", "/p/b"]
+    assert after == ("/p/b", 2, False)
+
+
+async def test_a_filter_that_hides_the_cursor_session_moves_the_cursor_to_its_row(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A filter that hides the cursor's session moves the cursor to the row in its place."""
+    a1, _a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab", "slash", "b")
+        await pilot.pause()
+        narrowed = rows(table), table.selected_id, table.cursor_row
+        await pilot.press("escape")
+        await pilot.pause()
+        restored = rows(table), table.selected_id, table.cursor_row
+
+    assert narrowed == ([b1], b1, 0)
+    assert restored == ([a1, _a2, b1], b1, 2)
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:

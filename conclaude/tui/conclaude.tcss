@@ -8,24 +8,29 @@ Screen {
     height: 1fr;
 }
 
+/* The width comes from settings */
+#left {
+    height: 1fr;
+}
+
 #right {
     width: 1fr;
     height: 1fr;
 }
 
-ProjectsPane, SessionsPane, DetailsPane {
+ProjectsPane, SessionsPane, DetailsPane, FilterBox {
     background: $surface;
     border: round $border-blurred;
     border-title-color: $text-muted;
 }
 
-ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus {
+ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus, FilterBox:focus {
     border: round $border;
     border-title-color: $text;
 }
 
-/* The width comes from the settings; the screen sets it when it mounts. */
 ProjectsPane {
+    width: 1fr;
     height: 1fr;
     text-wrap: nowrap;
     text-overflow: ellipsis;
@@ -38,5 +43,11 @@ SessionsPane {
 DetailsPane {
     height: auto;
     max-height: 50%;
+    padding: 0 1;
+}
+
+FilterBox {
+    width: 1fr;
+    height: 3;
     padding: 0 1;
 }
