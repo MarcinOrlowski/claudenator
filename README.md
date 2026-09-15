@@ -13,6 +13,15 @@ the releases that follow, moves the ones you pick to a Trash you can restore fro
 pipx install https://github.com/MarcinOrlowski/claudenator.git
 ```
 
+## Settings
+
+The `F2` key opens the settings, in sections: General, Lists, Times and Layout. A change takes effect at
+once. `ctrl+s` keeps it, `escape` puts it back, and `ctrl+d` puts the option under the cursor back to its
+default.
+
+What you keep goes to `~/.config/claudenator/config.toml` (`$XDG_CONFIG_HOME` wins over `~/.config`). The
+file holds only the options you changed, and the command line reads it too.
+
 ## Licence
 
 MIT. See [LICENSE.md](LICENSE.md).

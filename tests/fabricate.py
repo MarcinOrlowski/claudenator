@@ -493,4 +493,5 @@ def make_settings(tmp_path: Path) -> Settings:
         claude_dir=tmp_path / "claude",
         data_dir=tmp_path / "data",
         proc_dir=tmp_path / "proc",
+        config_file=tmp_path / "config" / "config.toml",
     )

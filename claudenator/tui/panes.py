@@ -37,6 +37,7 @@ SHARED_BINDINGS = [
     Binding("tab", "app.focus_next", "Next pane"),
     Binding("shift+tab", "app.focus_previous", "Previous pane", show=False),
     Binding("r", "screen.reload", "Reload"),
+    Binding("f2", "app.settings", "Settings"),
     # The title bar shows this key, so the footer keeps the room for the rest.
     Binding("question_mark", "app.about", "About", key_display="?", show=False),
     Binding("q", "app.quit", "Quit"),
@@ -284,6 +285,10 @@ class Lister(OptionList):
         event.stop()
         self.post_message(self.Opened())
 
+    def repaint(self) -> None:
+        """Write every line again, for a setting that changes how a line reads."""
+        self._relabel()
+
     def _label(self, key: str) -> str:
         """The text of one line. The id itself, unless a subclass makes it fit."""
         return key
@@ -452,8 +457,16 @@ class Table(Filterable, DataTable):
         self._retitle()
         self._announce()
 
+    def repaint(self) -> None:
+        """Put every row back, for a setting that changes how a cell reads."""
+        self._rebuild()
+
     def _rows(self) -> Sequence[Session | TrashEntry]:
         """The rows on view: the filter in effect, in the order in effect."""
+        raise NotImplementedError
+
+    def _rebuild(self) -> None:
+        """Put the rows back. Every table has its own columns and cells."""
         raise NotImplementedError
 
     def _retitle(self) -> None:
@@ -976,6 +989,10 @@ class Lines(VerticalScroll):
             self._room = room
             if self._lines:
                 self._paint()
+
+    def repaint(self) -> None:
+        """Write the lines again, for a setting that changes how one reads."""
+        self._paint()
 
     def _paint(self) -> None:
         """Put the lines on the screen, each one cut to the room it has."""
