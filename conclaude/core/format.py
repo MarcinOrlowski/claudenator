@@ -141,8 +141,7 @@ class Formatter:
             if keep <= 0:
                 return text[-width:] if width else ""
             return mark + text[-keep:]
-        # The end first, up to its share. Then the start, in what is left. Then
-        # the end again, in case the start did not use all of its share.
+
         share = int(room * self.settings.cut_head_share)
         drop = len(parts) - max(parts_that_fit(parts[::-1], sep, room - share), 1)
         tail = sep.join(parts[drop:])
@@ -161,12 +160,7 @@ class Formatter:
         return len(self.settings.state_marks)
 
     def marks(self, session: Session) -> str:
-        """The session state, one slot each: live, fork, damaged.
-
-        A state that is on shows its letter, one that is off shows a dash. The
-        slots stay in place, so the eye finds a letter at once: ``-F-`` is a
-        fork that is neither live nor damaged.
-        """
+        """The session state, one slot each: live, fork, damaged."""
         states = (session.live, session.is_fork, session.damaged)
         return "".join(
             mark if on else self.settings.state_off

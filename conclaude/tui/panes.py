@@ -59,8 +59,7 @@ NARROWEST_COLUMN = 12
 # this is the first one's part of it.
 TITLE_SHARE = 0.6
 
-# The columns of the sessions table. The state column holds the marks that
-# once sat on the title: one letter per state, a dash where the state is off.
+# The columns of the sessions table.
 COLUMNS = {
     "state": "Sts",
     "title": "Title",
@@ -555,7 +554,7 @@ class SessionsPane(Table):
         )
 
     def _state_width(self, labels: dict[str, str]) -> int:
-        """How wide the State column is: its marks, or its header when that is wider."""
+        """How wide the State column is."""
         return max(len(labels["state"]), self.fmt.state_width)
 
     def _fit(self) -> tuple[int, int]:

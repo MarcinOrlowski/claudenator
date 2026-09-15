@@ -66,9 +66,7 @@ class Settings:
     # The share of the room the start of a cut text may take. The end gets the
     # rest, and the room the start leaves unused. 0 keeps the end alone.
     cut_head_share: float = 0.25
-    # The state column: one slot for every state, always in this order: live,
-    # fork, damaged. A state that is on shows its letter. One that is off shows
-    # ``state_off``, so the letters always sit in the same slot.
+    # The state column: [L]ive, [F]ork, [D]amaged.
     state_marks: str = "LFD"
     state_off: str = "-"
 

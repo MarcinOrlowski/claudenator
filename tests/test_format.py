@@ -243,11 +243,7 @@ def session(**overrides: Any) -> Session:
 
 
 def test_the_state_marks_hold_one_slot_for_every_state() -> None:
-    """The state marks hold one slot per state: live, fork, damaged.
-
-    A state that is on shows its letter. One that is off shows a dash, so the
-    letters always sit in the same slot.
-    """
+    """The state marks hold one slot per state: live, fork, damaged."""
     fmt = Formatter(Settings())
 
     assert fmt.marks(session()) == "---"

@@ -29,10 +29,10 @@ TITLE_WIDTH = 48
 
 
 def short_title(session: Session) -> str:
-    """The title, cut to the table width. The state marks have a column of their own."""
+    """The title in truncated form."""
     text = session.title
     if len(text) > TITLE_WIDTH:
-        text = text[: TITLE_WIDTH - 3].rstrip() + "..."
+        text = text[: TITLE_WIDTH - 3].rstrip() + "…"
     return text
 
 
