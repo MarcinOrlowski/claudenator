@@ -8,7 +8,13 @@ Screen {
     height: 1fr;
 }
 
-/* The width comes from settings */
+/* A window too narrow for two columns holds the panes in one, so that every
+   pane keeps the full width. The width that does this comes from settings. */
+#body.-stacked {
+    layout: vertical;
+}
+
+/* The width, or the height in one column, comes from settings */
 #left {
     height: 1fr;
 }
@@ -57,6 +63,29 @@ FilterBox {
     width: 1fr;
     height: 3;
     padding: 0 1;
+}
+
+/* The window has no room for the panes. This message takes their place. */
+#too-small {
+    width: 1fr;
+    height: 1fr;
+    content-align: center middle;
+    text-align: center;
+}
+
+/* One session or one entry in full, over the whole window. */
+#full {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+#full Static {
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
 }
 
 /* The About box sits in the middle of the window, over the panes. */

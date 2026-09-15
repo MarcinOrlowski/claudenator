@@ -435,8 +435,9 @@ class SessionsPane(Table):
         Binding("d", "trash", "Delete"),
         Binding("o", "sort_next", "Sort"),
         Binding("O", "sort_reverse", "Reverse"),
+        Binding("enter", "open", "Details"),
     ]
-    ROW_ACTIONS = frozenset({"trash"})
+    ROW_ACTIONS = frozenset({"trash", "open"})
 
     class Chosen(Table.Chosen):
         """The cursor moved to a session, or the table went empty (``None``)."""
@@ -447,6 +448,13 @@ class SessionsPane(Table):
 
     class TrashWanted(Message):
         """The user pressed d: the session under the cursor goes to the Trash."""
+
+        def __init__(self, session: Session) -> None:
+            super().__init__()
+            self.session = session
+
+    class Opened(Message):
+        """The user pressed enter: they want this session in full, over the window."""
 
         def __init__(self, session: Session) -> None:
             super().__init__()
@@ -494,6 +502,12 @@ class SessionsPane(Table):
         session = self.selected
         if session is not None:
             self.post_message(self.TrashWanted(session))
+
+    def action_open(self) -> None:
+        """The enter key: ask for the session under the cursor in full."""
+        session = self.selected
+        if session is not None:
+            self.post_message(self.Opened(session))
 
     def sort_by(self, column: str, descending: bool | None = None) -> None:
         """Order the rows by one column.
@@ -622,8 +636,9 @@ class EntriesPane(Table):
         *FILTER_BINDINGS,
         Binding("u", "restore", "Restore"),
         Binding("x", "purge", "Purge"),
+        Binding("enter", "open", "Entry"),
     ]
-    ROW_ACTIONS = frozenset({"restore", "purge"})
+    ROW_ACTIONS = frozenset({"restore", "purge", "open"})
 
     class Chosen(Table.Chosen):
         """The cursor moved to an entry, or the table went empty (``None``)."""
@@ -641,6 +656,13 @@ class EntriesPane(Table):
 
     class PurgeWanted(Message):
         """The user pressed x: the entry under the cursor leaves the disk for good."""
+
+        def __init__(self, entry: TrashEntry) -> None:
+            super().__init__()
+            self.entry = entry
+
+    class Opened(Message):
+        """The user pressed enter: they want this entry in full, over the window."""
 
         def __init__(self, entry: TrashEntry) -> None:
             super().__init__()
@@ -681,6 +703,12 @@ class EntriesPane(Table):
         entry = self.selected
         if entry is not None:
             self.post_message(self.PurgeWanted(entry))
+
+    def action_open(self) -> None:
+        """The enter key: ask for the entry under the cursor in full."""
+        entry = self.selected
+        if entry is not None:
+            self.post_message(self.Opened(entry))
 
     def on_resize(self) -> None:
         """Refit the flexible columns when the room changes."""
@@ -807,3 +835,19 @@ class EntryPane(Lines):
     def show(self, entry: TrashEntry | None) -> None:
         """Show one entry, or the empty state when there is none."""
         self.show_lines(self.fmt.describe_entry(entry) if entry is not None else None)
+
+
+class TooSmall(Static):
+    """The message that takes the place of the panes in a window with no room.
+
+    It says the smallest window that works, so the user knows what to do. The
+    numbers come from the settings object.
+    """
+
+    def __init__(self, width: int, height: int) -> None:
+        super().__init__(
+            f"Window too small\nAt least {width} x {height}",
+            id="too-small",
+            markup=False,
+        )
+        self.display = False

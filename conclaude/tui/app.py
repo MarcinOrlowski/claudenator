@@ -16,8 +16,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
-from textual.screen import Screen, ScreenResultType
+from textual.screen import ModalScreen, Screen, ScreenResultType
+from textual.widget import Widget
 from textual.widgets import Footer, Header
 
 from conclaude import __title__
@@ -34,8 +36,11 @@ from conclaude.tui.panes import (
     EntryPane,
     FilterBox,
     FilterWanted,
+    Lines,
     ProjectsPane,
     SessionsPane,
+    Table,
+    TooSmall,
 )
 
 
@@ -45,6 +50,42 @@ class TrashVisit:
 
     entries: list[TrashEntry]
     restored: list[Session]
+
+
+class FullScreen(ModalScreen[None]):
+    """One session, or one Trash entry, in full over the whole window.
+
+    A small pane cuts a long line to fit. This box gives the same lines the
+    whole window. The arrow keys scroll it, and escape closes it.
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("enter", "close", "Close", show=False),
+        Binding("q", "close", "Close", show=False),
+    ]
+
+    def __init__(
+        self, title: str, fmt: Formatter, lines: list[tuple[str, str]]
+    ) -> None:
+        super().__init__()
+        self.box_title = title
+        self.fmt = fmt
+        self.lines = lines
+
+    def compose(self) -> ComposeResult:
+        yield Lines("full", self.box_title, self.fmt, "")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """The lines go in, and the box takes the focus so the keys scroll it."""
+        pane = self.query_one(Lines)
+        pane.show_lines(self.lines)
+        pane.focus()
+
+    def action_close(self) -> None:
+        """The box goes, and the pane that opened it has the focus again."""
+        self.dismiss(None)
 
 
 class PaneScreen(Screen[ScreenResultType]):
@@ -63,13 +104,74 @@ class PaneScreen(Screen[ScreenResultType]):
         else:
             box.open()
 
-    def _size_left(self) -> None:
-        """Size the left side from the settings."""
+    def on_resize(self) -> None:
+        """The window has another size: fit the panes to it."""
+        self._fit_window()
+
+    def _too_small(self) -> TooSmall:
+        """The message that takes the place of the panes, sized from the settings."""
         settings = self.store.settings
+        return TooSmall(settings.min_width, settings.min_height)
+
+    def _size_left(self, stacked: bool) -> None:
+        """Size the left pane from the settings, for the layout in effect.
+
+        Side by side, it takes a share of the width, between the two limits the
+        settings give. In one column, it takes the same share of the height,
+        never below the limit the settings give, and the full width.
+        """
+        settings = self.store.settings
+        share = f"{settings.projects_pane_share:.0%}"
         left = self.query_one("#left")
-        left.styles.width = f"{settings.projects_pane_share:.0%}"
-        left.styles.min_width = settings.projects_pane_min_width
-        left.styles.max_width = settings.projects_pane_max_width
+        if stacked:
+            left.styles.width = "1fr"
+            left.styles.min_width = 0
+            left.styles.max_width = "100%"
+            left.styles.height = share
+            left.styles.min_height = settings.projects_pane_min_height
+        else:
+            left.styles.width = share
+            left.styles.min_width = settings.projects_pane_min_width
+            left.styles.max_width = settings.projects_pane_max_width
+            left.styles.height = "1fr"
+            left.styles.min_height = 0
+
+    def _fit_window(self) -> None:
+        """Give the layout the shape the window has room for.
+
+        A narrow window puts the panes in one column, one over the other, so
+        that every one of them keeps the full width. No pane ever goes out of
+        view on its own. Under the smallest window that works, a plain message
+        takes the place of them all. Every width comes from the settings
+        object, and no step is one way: the layout goes back as the window grows.
+        """
+        settings = self.store.settings
+        width, height = self.size
+        too_small = width < settings.min_width or height < settings.min_height
+        stacked = width < settings.stack_panes_below
+        body = self.query_one("#body")
+        body.display = not too_small
+        body.set_class(stacked, "-stacked")
+        self.query_one(TooSmall).display = too_small
+        self._size_left(stacked)
+        self._keep_focus()
+
+    def _keep_focus(self) -> None:
+        """Hold the focus on a pane through every change of size.
+
+        A window with no room for the panes takes them out of view, and the
+        library drops the focus with them. The keys of the pane go too, and a
+        window that answers no key at all would trap the user. So the table
+        takes the focus back: it is the pane the user works in.
+        """
+        focused = self.focused
+        if focused is not None and all(
+            node.display
+            for node in focused.ancestors_with_self
+            if isinstance(node, Widget)
+        ):
+            return
+        self.query_one(Table).focus()
 
     def _show_trash_total(self, entries: list[TrashEntry]) -> None:
         """The header says what the Trash holds now."""
@@ -98,12 +200,13 @@ class MainScreen(PaneScreen[None]):
                 yield sessions
                 yield FilterBox(sessions)
                 yield DetailsPane(self.fmt)
+        yield self._too_small()
         yield Footer()
 
     def on_mount(self) -> None:
-        """Size the left side and order the table from the settings, fill and focus."""
+        """Shape the layout and order the table from the settings, fill and focus."""
         settings = self.store.settings
-        self._size_left()
+        self._fit_window()
         self.query_one(SessionsPane).sort_by(
             settings.sort_column, settings.sort_descending
         )
@@ -144,6 +247,17 @@ class MainScreen(PaneScreen[None]):
         """The cursor sits on a session."""
         session = self._by_id.get(event.session_id) if event.session_id else None
         self.query_one(DetailsPane).show(self._details_of(session))
+
+    def on_sessions_pane_opened(self, event: SessionsPane.Opened) -> None:
+        """Enter on a session: its details take the whole window.
+
+        This is the way to the details in a window too narrow to hold the pane.
+        """
+        details = self._details_of(event.session)
+        if details is not None:
+            self.app.push_screen(
+                FullScreen("Details", self.fmt, self.fmt.describe(details))
+            )
 
     def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
         """The d key: the session goes to the Trash and its row goes from the table.
@@ -217,11 +331,12 @@ class TrashScreen(PaneScreen[TrashVisit]):
                 yield entries
                 yield FilterBox(entries)
                 yield EntryPane(self.fmt)
+        yield self._too_small()
         yield Footer()
 
     def on_mount(self) -> None:
-        """Size the left side, fill, and focus the entries: that is where the keys are."""
-        self._size_left()
+        """Shape the layout, fill, and focus the entries: that is where the keys are."""
+        self._fit_window()
         self.load()
         self.query_one(EntriesPane).focus()
 
@@ -258,6 +373,12 @@ class TrashScreen(PaneScreen[TrashVisit]):
         """The cursor sits on an entry."""
         entry = self._by_id.get(event.entry_id) if event.entry_id else None
         self.query_one(EntryPane).show(entry)
+
+    def on_entries_pane_opened(self, event: EntriesPane.Opened) -> None:
+        """Enter on an entry: it takes the whole window, pane or no pane."""
+        self.app.push_screen(
+            FullScreen("Entry", self.fmt, self.fmt.describe_entry(event.entry))
+        )
 
     def on_entries_pane_restore_wanted(self, event: EntriesPane.RestoreWanted) -> None:
         """The ``u`` key: the entry goes back."""
