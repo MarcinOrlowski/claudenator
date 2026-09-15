@@ -21,7 +21,7 @@ import pytest
 from claudenator.core.config import (
     OPTIONS,
     apply_file,
-    changed,
+    as_toml,
     check,
     default_of,
     dump,
@@ -70,15 +70,15 @@ def test_every_option_belongs_to_one_section() -> None:
     named = [option for group in groups() for option in options_in(group)]
 
     assert named == list(OPTIONS)
-    assert groups() == ["General", "Lists", "Times", "Layout"]
+    assert groups() == ["General", "Lists", "Times", "Trash"]
 
 
 def test_a_file_that_goes_out_comes_back_the_same(settings: Settings) -> None:
     """A file that goes out comes back the same."""
     settings.theme = "gruvbox"
     settings.confirm_delete = True
-    settings.cut_head_share = 0.5
-    settings.projects_pane_min_width = 30
+    settings.confirm_purge = False
+    settings.sort_descending = False
     settings.time_pattern = "%H:%M"
     save_file(settings)
 
@@ -145,66 +145,66 @@ def test_a_name_that_is_not_an_option_is_left_out(settings: Settings) -> None:
     assert settings.theme == "nord"
 
 
-def test_the_file_holds_only_what_the_user_changed(settings: Settings) -> None:
-    """The file holds only what the user changed."""
+def test_the_file_holds_every_option(settings: Settings) -> None:
+    """The file holds every option.
+
+    A value at its default is written too. That locks it: a later release may
+    change a default, and the file keeps the one the user saved.
+    """
     settings.theme = "nord"
-    settings.sort_descending = False
 
     text = dump(settings)
     lines = [line for line in text.splitlines() if line and not line.startswith("#")]
 
-    assert lines == ['theme = "nord"', "sort_descending = false"]
-    assert changed(settings) == {"theme": "nord", "sort_descending": False}
+    assert lines[0] == 'theme = "nord"'
+    assert "sort_descending = true" in lines
+    assert [line.split(" = ")[0] for line in lines] == [
+        option.name for option in OPTIONS
+    ]
 
 
-def test_an_option_back_at_its_default_leaves_the_file(settings: Settings) -> None:
-    """An option back at its default leaves the file."""
+def test_the_file_names_the_section_of_every_option(settings: Settings) -> None:
+    """The file names the section of every option, as the settings screen does."""
+    wanted = [f"# {group}" for group in groups()]
+
+    marks = [line for line in dump(settings).splitlines() if line in wanted]
+
+    assert marks == wanted
+
+
+def test_an_option_back_at_its_default_stays_in_the_file(settings: Settings) -> None:
+    """An option back at its default stays in the file."""
     settings.theme = "nord"
     save_file(settings)
     with_theme = settings.config_file.read_text(encoding="utf-8")
 
     settings.theme = default_of("theme")
     save_file(settings)
-    without = settings.config_file.read_text(encoding="utf-8")
+    back = settings.config_file.read_text(encoding="utf-8")
 
-    assert "nord" in with_theme
-    assert "theme" not in without
-    assert changed(settings) == {}
+    assert 'theme = "nord"' in with_theme
+    assert f"theme = {as_toml(default_of('theme'))}" in back
 
 
 def test_a_text_with_a_quote_in_it_comes_back_whole(settings: Settings) -> None:
     """A text with a quote in it comes back whole."""
-    settings.cut_mark = 'a "b" \\ c'
+    settings.time_pattern = 'a "b" \\ c'
     save_file(settings)
 
     back = Settings(config_file=settings.config_file)
     notes = apply_file(back)
 
     assert notes == []
-    assert back.cut_mark == 'a "b" \\ c'
+    assert back.time_pattern == 'a "b" \\ c'
 
 
-def test_true_is_never_a_number_and_a_number_is_never_a_text() -> None:
-    """True is never a number and a number is never a text."""
-    assert check("projects_pane_min_width", True) is None
+def test_a_value_of_another_kind_keeps_the_default() -> None:
+    """A value of another kind keeps the default."""
     assert check("confirm_delete", 1) is None
-    assert check("cut_mark", 7) is None
-    assert check("projects_pane_min_width", "24") is None
-
-
-def test_a_whole_number_is_taken_for_a_fraction() -> None:
-    """A whole number is taken for a fraction."""
-    assert check("cut_head_share", 1) == 1.0
-    assert check("projects_pane_min_width", 24.5) is None
-
-
-def test_a_value_out_of_bounds_keeps_the_default() -> None:
-    """A value out of bounds keeps the default."""
-    assert check("cut_head_share", 1.5) is None
-    assert check("cut_head_share", -0.1) is None
-    assert check("projects_pane_min_width", 0) is None
-    assert check("cut_head_share", 0.0) == 0.0
-    assert check("cut_head_share", 1.0) == 1.0
+    assert check("confirm_purge", "yes") is None
+    assert check("time_pattern", 7) is None
+    assert check("sort_descending", "true") is None
+    assert check("confirm_purge", False) is False
 
 
 def test_a_text_that_is_not_one_of_the_choices_keeps_the_default() -> None:

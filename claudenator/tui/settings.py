@@ -56,9 +56,7 @@ def slug(group: str) -> str:
 def as_value(option: Option, raw: Value) -> Value | None:
     """What the user chose or typed, as the option can hold it, or None.
 
-    A box of its own hands back a text, even for a number, so a number is made
-    from it here. A text the option cannot hold gives None, and the caller
-    leaves the option as it was.
+    A box hands back a text, even for a number, so a number is made from it here.
     """
     kind = kind_of(option.name)
     if kind is not str and isinstance(raw, str):
@@ -76,9 +74,8 @@ class SettingsChanged(Message):
 class OptionInput(Input):
     """The box where a number or a free text is typed.
 
-    The library gives 'ctrl+d' to this box, to take out the character on the
-    right. The settings screen needs that key for the default of an option, so
-    this box hands it back. 'delete' still takes out the character.
+    The library gives 'ctrl+d' to this box. The screen needs that key, so this
+    box hands it back. 'delete' still takes out the character on the right.
     """
 
     BINDINGS = [Binding("ctrl+d", "screen.reset_one", "Default", show=False)]
@@ -151,13 +148,14 @@ class OptionRow(Horizontal):
 class SettingsScreen(ModalScreen[bool]):
     """The settings box: every option the user may change, in sections.
 
-    A change takes effect as the user makes it, behind the box. 'ctrl+s'
-    writes the file and closes. 'escape' puts every option back to what it
-    was when the box opened, and the file is not touched.
+    Every change takes effect as the user makes it, behind the box, so the
+    theme and the layout are on view before the user keeps them. Save and
+    Apply both write the file. Cancel goes back to the last applied state.
     """
 
     BINDINGS = [
         Binding("ctrl+s", "save", "Save"),
+        Binding("ctrl+a", "apply", "Apply"),
         Binding("f2", "next_group", "Next section"),
         Binding("ctrl+d", "reset_one", "Default"),
         Binding("escape", "cancel", "Cancel"),
@@ -166,9 +164,8 @@ class SettingsScreen(ModalScreen[bool]):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         self.settings = settings
-        # What every option held when the box opened. This is what 'escape'
-        # puts back, and it is taken before the user can change a thing.
-        self.before = values_of(settings)
+        # The last applied state, which Cancel puts back. Apply moves it on.
+        self.applied = values_of(settings)
 
     def compose(self) -> ComposeResult:
         box = Vertical(id="settings")
@@ -177,9 +174,8 @@ class SettingsScreen(ModalScreen[bool]):
             with TabbedContent():
                 for group in groups():
                     with TabPane(group, id=slug(group)):
-                        # 'tab' moves from one option to the next, and never
-                        # stops on the page itself. A long section still
-                        # scrolls: the library brings the focused option in.
+                        # Not focusable: 'tab' goes from option to option. A long
+                        # section still scrolls, on the option that takes focus.
                         with VerticalScroll(classes="option-page", can_focus=False):
                             for option in options_in(group):
                                 yield OptionRow(
@@ -189,21 +185,28 @@ class SettingsScreen(ModalScreen[bool]):
                                 )
             with Horizontal(id="settings-buttons"):
                 yield Button("Reset all", id="reset-all")
+                yield Static(classes="button-gap")
+                yield Button("Save", id="save", variant="primary")
+                yield Button("Apply", id="apply")
+                yield Button("Cancel", id="cancel")
         yield Footer()
 
     def action_save(self) -> None:
-        """The 'ctrl+s' key: the file is written, and the box closes."""
-        try:
-            path = save_file(self.settings)
-        except ClaudenatorError as error:
-            self.notify(str(error), title="Not saved", severity="error")
-            return
-        self.notify(f"Saved to {path}", title="Settings")
-        self.dismiss(True)
+        """Save: the file is written, and the box closes."""
+        if self._write():
+            self.dismiss(True)
+
+    def action_apply(self) -> None:
+        """Apply: the file is written, and the box stays open.
+
+        The applied state moves here, so a Cancel after this changes nothing.
+        """
+        if self._write():
+            self.applied = values_of(self.settings)
 
     def action_cancel(self) -> None:
-        """The 'escape' key: every option goes back, and the file is not touched."""
-        put_values(self.settings, self.before)
+        """Cancel: every option goes back to the last applied state, and closes."""
+        put_values(self.settings, self.applied)
         self._tell()
         self.dismiss(False)
 
@@ -222,12 +225,26 @@ class SettingsScreen(ModalScreen[bool]):
         here = names.index(tabs.active) if tabs.active in names else -1
         tabs.active = names[(here + 1) % len(names)]
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """The 'Reset all' button: every option goes back to its default."""
-        event.stop()
+    def action_reset_all(self) -> None:
+        """Reset all: every option goes back to its default.
+
+        It takes effect like any other change, so Cancel still undoes it.
+        """
         for row in self.query(OptionRow):
             self._put_default(row)
         self._tell()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """A button at the foot of the box."""
+        event.stop()
+        pressed = {
+            "save": self.action_save,
+            "apply": self.action_apply,
+            "cancel": self.action_cancel,
+            "reset-all": self.action_reset_all,
+        }.get(str(event.button.id))
+        if pressed is not None:
+            pressed()
 
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """A true or false option was turned over."""
@@ -240,11 +257,7 @@ class SettingsScreen(ModalScreen[bool]):
         self._take(event.select, str(event.value))
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        """A number or a text was typed.
-
-        A value the option cannot hold changes nothing: the box marks itself
-        and the option keeps what it had, so a half-typed number is never taken.
-        """
+        """A number or a text was typed. A half-typed number is never taken."""
         event.stop()
         result = event.validation_result
         if result is not None and not result.is_valid:
@@ -281,10 +294,19 @@ class SettingsScreen(ModalScreen[bool]):
         setattr(self.settings, row.option.name, value)
         self._tell()
 
+    def _write(self) -> bool:
+        """Write the settings file. False when it could not be written."""
+        try:
+            path = save_file(self.settings)
+        except ClaudenatorError as error:
+            self.notify(str(error), title="Not saved", severity="error")
+            return False
+        self.notify(f"Saved to {path}", title="Settings")
+        return True
+
     def _tell(self) -> None:
         """Ask the app to put the settings in effect, behind the box.
 
-        The message goes to the app itself, not up from the box, so that it
-        still arrives when the box is on its way out.
+        Straight to the app, so it still arrives when the box is on its way out.
         """
         self.app.post_message(SettingsChanged())

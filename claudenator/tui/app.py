@@ -32,6 +32,7 @@ from claudenator.core.model import Figures, Session, SessionDetails, TrashEntry
 from claudenator.core.settings import Settings
 from claudenator.core.store import ScanResult, SessionStore, projects_of
 from claudenator.tui.about import AboutScreen
+from claudenator.tui.confirm import ConfirmScreen
 from claudenator.tui.panes import (
     DaysPane,
     DetailsPane,
@@ -197,11 +198,7 @@ class PaneScreen(Screen[ScreenResultType]):
         self.query_one(Table).focus()
 
     def refresh_settings(self) -> None:
-        """A setting changed: give the panes the new shape, and draw them again.
-
-        Every pane reads the one settings object through the formatter, so
-        nothing is handed over here: the panes only have to draw again.
-        """
+        """A setting changed: give the panes the new shape, and draw them again."""
         self._fit_window()
         for lister in self.query(Lister):
             lister.repaint()
@@ -382,8 +379,18 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
-        """The 'd' key: the session goes to the Trash."""
+        """The 'd' key: the session goes to the Trash, after a question when asked."""
         session = event.session
+        if not self.store.settings.confirm_delete:
+            self._trash_session(session)
+            return
+        self.app.push_screen(
+            ConfirmScreen("Delete", "Move this session to the Trash?", session.title),
+            lambda yes: self._trash_session(session) if yes else None,
+        )
+
+    def _trash_session(self, session: Session) -> None:
+        """Move one session to the Trash and take its row off the screen."""
         try:
             entry = self.store.trash_of(session)
         except ClaudenatorError as error:
@@ -514,8 +521,20 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self._forget(entry)
 
     def on_entries_pane_purge_wanted(self, event: EntriesPane.PurgeWanted) -> None:
-        """The ``x`` key: the entry is gone for good."""
+        """The ``x`` key: the entry is gone for good, after a question when asked."""
         entry = event.entry
+        if not self.store.settings.confirm_purge:
+            self._purge_entry(entry)
+            return
+        self.app.push_screen(
+            ConfirmScreen(
+                "Purge", "Remove this entry from the disk for good?", entry.title
+            ),
+            lambda yes: self._purge_entry(entry) if yes else None,
+        )
+
+    def _purge_entry(self, entry: TrashEntry) -> None:
+        """Take one entry off the disk and off the screen."""
         try:
             self.store.purge_of(entry)
         except ClaudenatorError as error:
@@ -571,11 +590,7 @@ class ClaudenatorApp(App[None]):
         self.settings_changed()
 
     def settings_changed(self) -> None:
-        """Put every setting in effect, on every screen that is open.
-
-        The theme, the time forms and the shape of the panes all follow the one
-        settings object, so this is the only place that has to say so.
-        """
+        """Put every setting in effect, on every screen that is open."""
         self.apply_theme()
         for screen in self.screen_stack:
             if isinstance(screen, PaneScreen):
@@ -590,12 +605,7 @@ class ClaudenatorApp(App[None]):
         return True
 
     def on_mount(self) -> None:
-        """The theme in effect is the one the settings name, and the notes are said.
-
-        A note comes from the settings file: it is unreadable, or it holds a
-        value an option cannot take. The defaults are in effect for those, and
-        the file stays as it is until the user saves.
-        """
+        """Take the theme the settings name, and say every note the file gave."""
         notes = list(self.notes)
         if not self.apply_theme():
             notes.append(f"There is no theme named '{self.settings.theme}'.")

@@ -47,7 +47,7 @@ class Settings:
     claude_dir: Path = field(default_factory=default_claude_dir)
     data_dir: Path = field(default_factory=default_data_dir)
     proc_dir: Path = Path("/proc")
-    # Where the settings the user changes are kept. See ``core/config.py``.
+    # See ``core/config.py``.
     config_file: Path = field(default_factory=default_config_file)
 
     # The screen.
@@ -75,6 +75,8 @@ class Settings:
     min_width: int = 30
     min_height: int = 12
     confirm_delete: bool = False
+    # A purge cannot be undone, so this one starts on.
+    confirm_purge: bool = True
 
     # How to format dates. See ``format.Formatter``. Where the time goes decides
     # the form. A list holds it in a column, where the room is short, so it

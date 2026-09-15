@@ -93,9 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
 def settings_from(args: argparse.Namespace) -> tuple[Settings, list[str]]:
     """A settings object, and a note for every fault in the settings file.
 
-    The file comes first, the command line on top of it: a flag always wins
-    over the file. The screen and every command read the same object, so a
-    time form set on the screen also shows on the command line.
+    The file goes in first, the command line on top of it, so a flag wins.
     """
     settings = Settings()
     notes = apply_file(settings)

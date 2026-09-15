@@ -85,6 +85,8 @@ def test_screen_defaults_are_present() -> None:
     assert settings.min_width < settings.stack_panes_below
     assert 0 < settings.min_height
     assert settings.confirm_delete is False
+    # A purge cannot be undone, so that one asks first.
+    assert settings.confirm_purge is True
     assert settings.list_time_format == "relative"
     assert settings.details_time_format == "both"
     assert settings.cut_mark

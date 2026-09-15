@@ -42,8 +42,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
 def config_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Point the settings file at the temporary directory, for every test.
 
-    A test must never read, and never write, the settings file of whoever runs
-    it. This holds for the tests that build the settings object themselves too.
+    No test ever reads, or writes, the settings file of whoever runs it.
     """
     home = tmp_path / "xdg-config"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home))

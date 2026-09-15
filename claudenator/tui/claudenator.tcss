@@ -160,6 +160,41 @@ AboutScreen {
     text-wrap: nowrap;
 }
 
+/* The question before a session goes to the Trash, or an entry off the disk. */
+ConfirmScreen {
+    align: center middle;
+}
+
+#confirm {
+    width: 60;
+    height: auto;
+    max-width: 100%;
+    padding: 1 1 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+/* The thing the question is about. It never wraps: a long title is cut. */
+#confirm-subject {
+    width: 1fr;
+    padding: 1 0;
+    color: $text-accent;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#confirm-buttons {
+    height: 3;
+    width: 1fr;
+    align: right middle;
+}
+
+#confirm-buttons Button {
+    min-width: 8;
+    margin: 0 0 0 1;
+}
+
 /* The settings box sits in the middle of the window, over the panes, so that
    every change the user makes is on view behind it at once. */
 SettingsScreen {
@@ -170,7 +205,7 @@ SettingsScreen {
    from one to the next. A window with less room than this shrinks it. */
 #settings {
     width: 68;
-    height: 22;
+    height: 17;
     max-width: 100%;
     max-height: 100%;
     background: $surface;
@@ -211,10 +246,21 @@ SettingsScreen {
     width: 1fr;
 }
 
-/* At the foot of the box, under every section, so it is always on view. */
+/* At the foot of the box, under every section, so they are always on view.
+   'Reset all' stands apart at the left: it acts on the options, and the three
+   at the right end the box. */
 #settings-buttons {
     dock: bottom;
     height: 3;
     width: 1fr;
-    align: center middle;
+    padding: 0 1;
+}
+
+#settings-buttons Button {
+    min-width: 8;
+    margin: 0 0 0 1;
+}
+
+.button-gap {
+    width: 1fr;
 }

@@ -32,7 +32,7 @@ KINDS: dict[str, type] = {"bool": bool, "int": int, "float": float, "str": str}
 GENERAL = "General"
 LISTS = "Lists"
 TIMES = "Times"
-LAYOUT = "Layout"
+TRASH = "Trash"
 
 THEME = "theme"
 
@@ -41,9 +41,6 @@ SORT_COLUMNS = ("state", "title", "last_used", "size", "msgs", "project")
 
 # Which pane holds the focus at start.
 START_PANES = ("sessions", "projects")
-
-# A width or a height on the screen never goes past this
-BIGGEST = 1000
 
 
 @dataclass(frozen=True)
@@ -74,12 +71,6 @@ OPTIONS: tuple[Option, ...] = (
         choices=START_PANES,
     ),
     Option(
-        "confirm_delete",
-        GENERAL,
-        "Confirm delete",
-        "Ask before a session goes to the Trash.",
-    ),
-    Option(
         "sort_column",
         LISTS,
         "Sort column",
@@ -91,20 +82,6 @@ OPTIONS: tuple[Option, ...] = (
         LISTS,
         "Sort descending",
         "Biggest and newest first.",
-    ),
-    Option(
-        "cut_mark",
-        LISTS,
-        "Cut mark",
-        "The mark that stands where a long text is cut.",
-    ),
-    Option(
-        "cut_head_share",
-        LISTS,
-        "Cut head share",
-        "The share of the room the start of a cut text may take. 0 keeps the end alone.",
-        low=0.0,
-        high=1.0,
     ),
     Option(
         "list_time_format",
@@ -127,44 +104,16 @@ OPTIONS: tuple[Option, ...] = (
         "The form of an exact time, as strftime writes it.",
     ),
     Option(
-        "stack_panes_below",
-        LAYOUT,
-        "Stack panes below",
-        "Under this width the panes go in one column.",
-        low=1,
-        high=BIGGEST,
+        "confirm_delete",
+        TRASH,
+        "Confirm delete",
+        "Ask before a session goes to the Trash.",
     ),
     Option(
-        "projects_pane_share",
-        LAYOUT,
-        "Projects pane share",
-        "The share of the room the projects pane takes.",
-        low=0.0,
-        high=1.0,
-    ),
-    Option(
-        "projects_pane_min_width",
-        LAYOUT,
-        "Projects pane min width",
-        "Side by side, the projects pane is never narrower than this.",
-        low=1,
-        high=BIGGEST,
-    ),
-    Option(
-        "projects_pane_max_width",
-        LAYOUT,
-        "Projects pane max width",
-        "Side by side, the projects pane is never wider than this.",
-        low=1,
-        high=BIGGEST,
-    ),
-    Option(
-        "projects_pane_min_height",
-        LAYOUT,
-        "Projects pane min height",
-        "In one column, the projects pane is never shorter than this.",
-        low=1,
-        high=BIGGEST,
+        "confirm_purge",
+        TRASH,
+        "Confirm purge",
+        "Ask before a Trash entry leaves the disk for good.",
     ),
 )
 
@@ -309,26 +258,21 @@ def as_toml(value: Value) -> str:
     return repr(value)
 
 
-def changed(settings: Settings) -> dict[str, Value]:
-    """Every option that is not at its default, in the order of ``OPTIONS``."""
-    defaults = Settings()
-    return {
-        option.name: getattr(settings, option.name)
-        for option in OPTIONS
-        if getattr(settings, option.name) != getattr(defaults, option.name)
-    }
-
-
 def dump(settings: Settings) -> str:
-    """The text of the settings file for ``settings``.
-    The file holds only what the user changed. An option back at its default
-    leaves the file, so a later change of a default reaches the user.
+    """Every option as it stands now, in sections, as the settings screen lists them.
+
+    A value at its default goes in the file like any other. That is what locks
+    it: a later release may change a default, and the file holds the user's.
     """
-    lines = [
-        *HEADER,
-        *(f"{name} = {as_toml(value)}" for name, value in changed(settings).items()),
-    ]
-    return "\n".join(lines) + "\n"
+    lines: list[str] = list(HEADER)
+    for group in groups():
+        lines.append(f"# {group}")
+        lines += [
+            f"{option.name} = {as_toml(getattr(settings, option.name))}"
+            for option in options_in(group)
+        ]
+        lines.append("")
+    return "\n".join(lines)
 
 
 def save_file(settings: Settings) -> Path:
