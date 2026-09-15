@@ -1757,14 +1757,18 @@ def titles(app: ClaudenatorApp) -> tuple[str, str, str, str]:
 async def test_the_title_bar_names_the_view_on_the_left_and_the_tool_on_the_right(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The title bar names the view at the left edge, and the tool with its version at the right."""
+    """The title bar names the view at the left edge, and the tool with its version at the right.
+
+    The 'about' key comes last, after the version, because the footer drops it.
+    """
     three_sessions(fake)
     app = ClaudenatorApp(settings)
+    end = f" {__title__} v{__version__} {TitleBar.ABOUT_HINT}"
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         bar = app.screen.query_one(TitleBar).region
         view = app.screen.query_one("#view").region
-        brand = app.screen.query_one("#brand").region
+        hint = app.screen.query_one("#about-key").region
         top = app.screen._compositor.render_strips()[0].text
         await pilot.press("t")
         await pilot.pause()
@@ -1772,11 +1776,61 @@ async def test_the_title_bar_names_the_view_on_the_left_and_the_tool_on_the_righ
 
     assert (bar.x, bar.y, bar.width, bar.height) == (0, 0, WIDE[0], 1)
     assert view.x == 0
-    assert brand.right == WIDE[0]
+    assert hint.right == WIDE[0]
     assert top.startswith(" Sessions ")
-    assert top.rstrip().endswith(f" {__title__} v{__version__}")
+    assert top.rstrip().endswith(end)
     assert in_trash.startswith(" Trash ")
-    assert in_trash.rstrip().endswith(f" {__title__} v{__version__}")
+    assert in_trash.rstrip().endswith(end)
+
+
+async def test_the_about_key_on_the_title_bar_takes_the_colour_of_a_footer_key(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'about' key on the title bar is drawn like a key in the footer.
+
+    The colour is the theme variable the footer gives its own keys, so the key
+    reads the same in both places, and it follows the theme.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        hint = app.screen.query_one("#about-key")
+        first = app.theme_variables["footer-key-foreground"].lower()
+        before = hint.rich_style
+        app.theme = "gruvbox"
+        await pilot.pause()
+        second = app.theme_variables["footer-key-foreground"].lower()
+        after = hint.rich_style
+
+    assert before.color is not None and before.color.name == first
+    assert after.color is not None and after.color.name == second
+    assert before.bold is True
+    assert first != second
+
+
+async def test_the_built_in_command_box_is_off_and_its_key_opens_nothing(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Textual's own command box is not part of the tool, so 'ctrl+p' does nothing.
+
+    Off, the box takes its key and its footer entry with it.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        before = type(app.screen)
+        await pilot.press("ctrl+p")
+        await pilot.pause()
+        after = type(app.screen)
+        bound = "ctrl+p" in app.active_bindings
+        bottom = app.screen._compositor.render_strips()[-1].text
+
+    assert ClaudenatorApp.ENABLE_COMMAND_PALETTE is False
+    assert after is before
+    assert bound is False
+    assert "palette" not in bottom.lower()
 
 
 async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_change(
@@ -2378,19 +2432,19 @@ async def test_every_key_of_the_about_box_closes_it_and_q_does_not_quit(
 async def test_the_about_key_works_on_every_pane_and_in_the_trash(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Every pane lists the About key and opens the box with it, Trash mode too."""
+    """The About key opens the box on every pane, Trash mode too. No footer lists it."""
     _a1, _a2, b1 = three_sessions(fake)
     SessionStore(settings).trash(b1)
     app = ClaudenatorApp(settings)
     opened: list[tuple[type, type]] = []
-    listed: list[str] = []
+    listed: list[bool] = []
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         for keys in ((), ("tab",), ("tab", "tab"), ("t",)):
             await pilot.press(*keys)
             await pilot.pause()
             pane, under = type(app.focused), type(app.screen)
-            listed.append(shown_keys(app)["question_mark"])
+            listed.append("question_mark" in shown_keys(app))
             await pilot.press("question_mark")
             await pilot.pause()
             opened.append((type(app.screen), under))
@@ -2404,7 +2458,7 @@ async def test_the_about_key_works_on_every_pane_and_in_the_trash(
         (AboutScreen, MainScreen),
         (AboutScreen, TrashScreen),
     ]
-    assert listed == ["About"] * 4
+    assert listed == [False] * 4
 
 
 async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wraps(
