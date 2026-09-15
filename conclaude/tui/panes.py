@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -114,6 +114,19 @@ def flexible_widths(room: int, padding: int, two: bool) -> tuple[int, int]:
     room -= 2 * padding
     first = max(int(room * TITLE_SHARE), NARROWEST_COLUMN)
     return first, max(room - first, NARROWEST_COLUMN)
+
+
+@dataclass(frozen=True)
+class Place:
+    """Where the cursor of a table is, so that a rebuild can put it back.
+
+    ``key`` names the row it points at, ``index`` is the row it sits on, and
+    ``line`` is how far below the top row on view that row is drawn.
+    """
+
+    key: str | None
+    index: int
+    line: int
 
 
 class FilterWanted(Message):
@@ -451,12 +464,29 @@ class Table(Filterable, DataTable):
         # The keys that need a row dim with an empty table and come back with one
         self.refresh_bindings()
 
-    def _place_cursor(self, wanted: str | None, index: int) -> None:
-        """After a rebuild, the cursor finds its row by key, or takes the row at ``index``."""
+    def _place(self) -> Place:
+        """Where the cursor is right now, to hand to ``_place_cursor`` after a rebuild."""
+        return Place(
+            self._selected, self.cursor_row, self.cursor_row - self.scroll_offset.y
+        )
+
+    def _place_cursor(self, place: Place) -> None:
+        """After a rebuild, the cursor finds its row by key, or takes the row it was on.
+
+        The view goes with it: the row under the cursor keeps the line it was
+        drawn on. A rebuild clears the table, and a cleared table goes back to
+        the top, so without this the list would slide under the user's eyes.
+        A window that lost height holds fewer lines than the cursor had above
+        it, so the line is kept inside the room the pane has now.
+        """
         if self.row_count:
-            if wanted is not None and self.rows.get(wanted) is not None:
-                index = self.get_row_index(wanted)
+            index = place.index
+            if place.key is not None and self.rows.get(place.key) is not None:
+                index = self.get_row_index(place.key)
             self.move_cursor(row=min(index, self.row_count - 1), animate=False)
+            room = max(self.scrollable_content_region.height - 1, 0)
+            line = min(max(place.line, 0), room)
+            self.scroll_to(y=max(self.cursor_row - line, 0), animate=False)
         self._announce()
 
 
@@ -468,11 +498,13 @@ class SessionsPane(Table):
         TO_TRASH,
         *FILTER_BINDINGS,
         Binding("d", "trash", "Delete"),
+        Binding("s", "scan", "Scan"),
+        Binding("S", "scan_all", "Scan all"),
         Binding("o", "sort_next", "Sort"),
         Binding("O", "sort_reverse", "Reverse"),
         Binding("enter", "open", "Details"),
     ]
-    ROW_ACTIONS = frozenset({"trash", "open"})
+    ROW_ACTIONS = frozenset({"trash", "open", "scan", "scan_all"})
     NOUN = "session"
 
     class Chosen(Table.Chosen):
@@ -496,6 +528,20 @@ class SessionsPane(Table):
             super().__init__()
             self.session = session
 
+    class ScanWanted(Message):
+        """The user pressed 's': the session under the cursor wants a deep scan."""
+
+        def __init__(self, session: Session) -> None:
+            super().__init__()
+            self.session = session
+
+    class ScanAllWanted(Message):
+        """The user pressed 'S': every session on view wants a deep scan."""
+
+        def __init__(self, sessions: list[Session]) -> None:
+            super().__init__()
+            self.sessions = sessions
+
     def __init__(self, fmt: Formatter) -> None:
         super().__init__("sessions", "Sessions", fmt)
         self._sessions: list[Session] = []
@@ -516,6 +562,11 @@ class SessionsPane(Table):
     def sorting(self) -> tuple[str, bool]:
         """The column that orders the rows, and whether it is biggest first."""
         return self._sort_column, self._sort_descending
+
+    @property
+    def listed(self) -> list[Session]:
+        """The sessions on view right now: the project choice and the filter in effect."""
+        return self._rows()
 
     def show(
         self,
@@ -543,6 +594,32 @@ class SessionsPane(Table):
             return ""
         return self.fmt.stale(self.fmt.count(figures.turns), figures)
 
+    def set_figures(self, session_id: str, figures: Figures) -> None:
+        """Put the figures of one session on its row, where the row stands.
+
+        The Msgs cell alone changes, and the column widens for it when it has
+        to. No row moves, so a scan that runs while the user works never pulls
+        a row out from under the cursor. ``reorder`` does that, once, at the end.
+        """
+        self._figures[session_id] = figures
+        session = self._by_id.get(session_id)
+        if session is None or self.rows.get(session_id) is None:
+            return
+        self.update_cell(
+            session_id,
+            "msgs",
+            Text(self._turns(session), justify="right"),
+            update_width=True,
+        )
+
+    def reorder(self) -> None:
+        """Put the rows back in the order in effect, with every figure that came in since.
+
+        The cursor holds its session, as it does after any other rebuild.
+        """
+        if self._sessions:
+            self._rebuild()
+
     def drop(self, session_id: str) -> None:
         """Take one session out of the table in place."""
         self._sessions = [s for s in self._sessions if s.id != session_id]
@@ -560,6 +637,18 @@ class SessionsPane(Table):
         session = self.selected
         if session is not None:
             self.post_message(self.Opened(session))
+
+    def action_scan(self) -> None:
+        """The 's' key: ask for a deep scan of the session under the cursor."""
+        session = self.selected
+        if session is not None:
+            self.post_message(self.ScanWanted(session))
+
+    def action_scan_all(self) -> None:
+        """The 'S' key: ask for a deep scan of every session on view."""
+        sessions = self.listed
+        if sessions:
+            self.post_message(self.ScanAllWanted(sessions))
 
     def sort_by(self, column: str, descending: bool | None = None) -> None:
         """Order the rows by one column.
@@ -644,8 +733,7 @@ class SessionsPane(Table):
 
     def _rebuild(self) -> None:
         """Put the rows back."""
-        wanted = self._selected
-        index = self.cursor_row
+        place = self._place()
         labels = self._labels()
         self._widths = self._fit()
         title_width, project_width = self._widths
@@ -678,7 +766,7 @@ class SessionsPane(Table):
                     )
                 )
             self.add_row(*cells, key=session.id)
-        self._place_cursor(wanted, index)
+        self._place_cursor(place)
         self._retitle()
 
 
@@ -790,8 +878,7 @@ class EntriesPane(Table):
 
     def _rebuild(self) -> None:
         """Put the rows back."""
-        wanted = self._selected
-        index = self.cursor_row
+        place = self._place()
         self._widths = self._fit()
         title_width, project_width = self._widths
         self.clear(columns=True)
@@ -815,7 +902,7 @@ class EntriesPane(Table):
                 ),
                 key=entry.id,
             )
-        self._place_cursor(wanted, index)
+        self._place_cursor(place)
         self._retitle()
 
 

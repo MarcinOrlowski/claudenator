@@ -15,19 +15,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.screen import ModalScreen, Screen, ScreenResultType
 from textual.widget import Widget
 from textual.widgets import Footer
+from textual.worker import get_current_worker
 
 from conclaude import __title__
 from conclaude.core.errors import ConclaudeError
-from conclaude.core.format import Formatter
+from conclaude.core.format import Formatter, plural_of
 from conclaude.core.model import Figures, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore, projects_of
+from conclaude.core.store import ScanResult, SessionStore, projects_of
 from conclaude.tui.about import AboutScreen
 from conclaude.tui.panes import (
     DaysPane,
@@ -52,6 +55,30 @@ class TrashVisit:
 
     entries: list[TrashEntry]
     restored: list[Session]
+
+
+class ScanTook(Message):
+    """One session came back from the deep scan. Sent from the scan's own thread.
+
+    ``alone`` says the user asked for this one session, so its figures are
+    worth a word of their own.
+    """
+
+    def __init__(self, result: ScanResult, alone: bool) -> None:
+        super().__init__()
+        self.result = result
+        self.alone = alone
+
+
+class ScanEnded(Message):
+    """The deep scan has no session left. Sent from the scan's own thread."""
+
+    def __init__(self, read: int, kept: int, failed: int, alone: bool) -> None:
+        super().__init__()
+        self.read = read
+        self.kept = kept
+        self.failed = failed
+        self.alone = alone
 
 
 class FullScreen(ModalScreen[None]):
@@ -263,6 +290,75 @@ class MainScreen(PaneScreen[None]):
         if details is not None:
             self.app.push_screen(
                 FullScreen("Details", self.fmt, self.fmt.describe(details))
+            )
+
+    def on_sessions_pane_scan_wanted(self, event: SessionsPane.ScanWanted) -> None:
+        """The 's' key: deep-scan the session under the cursor.
+
+        Its row and its details take the figures, and a word says what was
+        counted. Figures already fresh in the cache are used as they are:
+        nothing is read twice.
+        """
+        self._scan([event.session], alone=True)
+
+    def on_sessions_pane_scan_all_wanted(
+        self, event: SessionsPane.ScanAllWanted
+    ) -> None:
+        """The 'S' key: deep-scan every session on view, in the background."""
+        count = len(event.sessions)
+        self.notify(
+            f"Reading {count} {plural_of('transcript', count)}", title="Deep scan"
+        )
+        self._scan(event.sessions)
+
+    @work(thread=True, exclusive=True, group="scan")
+    def _scan(self, sessions: list[Session], alone: bool = False) -> None:
+        """Read these transcripts in full, on a thread of its own.
+
+        The screen answers every key throughout, because this runs off the
+        screen's thread and sends each result back as a message. One deep scan
+        runs at a time: a new one takes the place of the one before it. A scan
+        cut short, by a quit or by the next scan, leaves the cache whole,
+        because every session is written on its own as it is done.
+        """
+        worker = get_current_worker()
+        read = kept = failed = 0
+        for result in self.store.scan_many(sessions):
+            if worker.is_cancelled:
+                return
+            if result.error is not None:
+                failed += 1
+            elif result.fresh:
+                kept += 1
+            else:
+                read += 1
+            self.post_message(ScanTook(result, alone))
+        if not worker.is_cancelled:
+            self.post_message(ScanEnded(read, kept, failed, alone))
+
+    def on_scan_took(self, event: ScanTook) -> None:
+        """One session came back: its row and its details take the figures."""
+        session = event.result.session
+        figures = event.result.figures
+        if figures is None:
+            self.notify(str(event.result.error), title="Not scanned", severity="error")
+            return
+        self._figures[session.id] = figures
+        self._details.pop(session.id, None)
+        pane = self.query_one(SessionsPane)
+        pane.set_figures(session.id, figures)
+        if pane.selected_id == session.id:
+            self.query_one(DetailsPane).show(self._details_of(session))
+        if event.alone:
+            self.notify(self.fmt.figures_line(figures), title="Deep scan")
+
+    def on_scan_ended(self, event: ScanEnded) -> None:
+        """The scan has no session left: the rows settle, and a batch says its count."""
+        self.query_one(SessionsPane).reorder()
+        if not event.alone:
+            self.notify(
+                self.fmt.scan_summary(event.read, event.kept, event.failed),
+                title="Deep scan",
             )
 
     def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
