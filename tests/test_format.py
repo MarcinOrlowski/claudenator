@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -21,9 +21,9 @@ from typing import Any
 
 import pytest
 
-from conclaude.core.format import TIME_FORMATS, Formatter
-from conclaude.core.model import Figures, Part, Session, SessionDetails, TrashEntry
-from conclaude.core.settings import Settings
+from claudenator.core.format import TIME_FORMATS, Formatter
+from claudenator.core.model import Figures, Part, Session, SessionDetails, TrashEntry
+from claudenator.core.settings import Settings
 
 NOW = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -360,7 +360,7 @@ def test_describe_ends_with_the_deep_scan_figures_or_the_command_that_makes_them
         "Scanned",
     ][1:]
     assert [label for label, _ in without][-2:] == ["Damaged", "Deep scan"]
-    assert dict(without)["Deep scan"] == "none  (run 'conclaude scan')"
+    assert dict(without)["Deep scan"] == "none  (run 'claudenator scan')"
 
 
 def test_describe_figures_names_every_number_in_full() -> None:
@@ -442,7 +442,7 @@ def test_stale_figures_carry_the_label_on_every_value_and_say_why() -> None:
     assert lines["Tool calls"] == "(outdated) 25  (Bash 20, Edit 5)"
     assert lines["Scanned"] == (
         f"{fmt.absolute(ago(hours=1))} (1h ago)"
-        "  (the transcript changed since; run 'conclaude scan')"
+        "  (the transcript changed since; run 'claudenator scan')"
     )
     assert marked["Turns"] == "OLD 12"
     assert fmt.stale("12", figures(stale=True)) == "*12"

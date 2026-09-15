@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
-from conclaude.core.errors import (
+from claudenator.core.errors import (
     PurgeFailed,
     RestoreClash,
     RestoreFailed,
@@ -35,10 +35,10 @@ from conclaude.core.errors import (
     TrashEntryNotFound,
     TrashFailed,
 )
-from conclaude.core.live import find_live, iter_markers, read_marker
-from conclaude.core.model import Part, Session, TrashEntry
-from conclaude.core.scan import folder_size
-from conclaude.core.settings import Settings
+from claudenator.core.live import find_live, iter_markers, read_marker
+from claudenator.core.model import Part, Session, TrashEntry
+from claudenator.core.scan import folder_size
+from claudenator.core.settings import Settings
 
 MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 1

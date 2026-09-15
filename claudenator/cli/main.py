@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -18,12 +18,12 @@ import json
 import sys
 from pathlib import Path
 
-from conclaude import __version__
-from conclaude.core.errors import ConclaudeError
-from conclaude.core.format import Formatter, plural_of
-from conclaude.core.model import Session
-from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
+from claudenator import __version__
+from claudenator.core.errors import ClaudenatorError
+from claudenator.core.format import Formatter, plural_of
+from claudenator.core.model import Session
+from claudenator.core.settings import Settings
+from claudenator.core.store import SessionStore
 
 TITLE_WIDTH = 48
 
@@ -38,16 +38,16 @@ def short_title(session: Session) -> str:
 
 def open_screen(settings: Settings) -> int:
     """Run the TUI."""
-    from conclaude.tui.app import run
+    from claudenator.tui.app import run
 
     return run(settings)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """The argument parser for the ``conclaude`` command."""
+    """The argument parser for the ``claudenator`` command."""
     defaults = Settings()
     parser = argparse.ArgumentParser(
-        prog="conclaude",
+        prog="claudenator",
         description="Look at Claude Code sessions and remove the ones you do not want.",
     )
     parser.add_argument(
@@ -63,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--data-dir",
         type=Path,
         metavar="DIR",
-        help=f"conclaude's own folder for the Trash and the cache (default: {defaults.data_dir})",
+        help=f"claudenator's own folder for the Trash and the cache (default: {defaults.data_dir})",
     )
     # The process table. Only a test points this anywhere but /proc.
     parser.add_argument("--proc-dir", type=Path, metavar="DIR", help=argparse.SUPPRESS)
@@ -195,7 +195,7 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_info(store, args, fmt)
         if args.command == "scan":
             return cmd_scan(store, args, fmt)
-    except ConclaudeError as error:
-        print(f"conclaude: {error}", file=sys.stderr)
+    except ClaudenatorError as error:
+        print(f"claudenator: {error}", file=sys.stderr)
         return 1
     parser.error(f"unknown command {args.command}")

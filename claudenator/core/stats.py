@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -19,8 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from conclaude.core.model import Figures
-from conclaude.core.scan import parse_record, is_human_message, parse_timestamp
+from claudenator.core.model import Figures
+from claudenator.core.scan import parse_record, is_human_message, parse_timestamp
 
 # The model name Claude Code puts on a message it made itself, with no API call:
 # an error notice, an interruption. Such a message is not counted anywhere.

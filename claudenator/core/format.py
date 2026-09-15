@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -16,8 +16,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
-from conclaude.core.model import Figures, Session, SessionDetails, TrashEntry
-from conclaude.core.settings import Settings
+from claudenator.core.model import Figures, Session, SessionDetails, TrashEntry
+from claudenator.core.settings import Settings
 
 TIME_FORMATS = ("absolute", "relative", "both")
 UNITS = (("y", 365 * 86400), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1))
@@ -285,7 +285,7 @@ class Formatter:
         says why.
         """
         if figures is None:
-            return [("Deep scan", "none  (run 'conclaude scan')")]
+            return [("Deep scan", "none  (run 'claudenator scan')")]
         models = ", ".join(f"{name} ({count})" for name, count in figures.models)
         tools = ", ".join(f"{name} {count}" for name, count in figures.tools)
         tokens = (
@@ -311,7 +311,7 @@ class Formatter:
         ]
         scanned = self.details_timestamp(figures.scanned_at)
         if figures.stale:
-            scanned += "  (the transcript changed since; run 'conclaude scan')"
+            scanned += "  (the transcript changed since; run 'claudenator scan')"
         lines.append(("Scanned", scanned))
         return lines
 

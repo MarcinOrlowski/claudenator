@@ -1,11 +1,11 @@
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 
@@ -14,7 +14,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "conclaude"
+name = "claudenator"
 dynamic = ["version"]
 description = "The only Claude Code session manager you needca"
 readme = "README.md"
@@ -46,20 +46,20 @@ dependencies = ["textual>=8,<9", "qrcat>=1,<2"]
 dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]
 
 [project.urls]
-Homepage = "https://github.com/MarcinOrlowski/conclaude"
-Issues = "https://github.com/MarcinOrlowski/conclaude/issues"
+Homepage = "https://github.com/MarcinOrlowski/claudenator"
+Issues = "https://github.com/MarcinOrlowski/claudenator/issues"
 
 [project.scripts]
-conclaude = "conclaude.cli.main:main"
+claudenator = "claudenator.cli.main:main"
 
 [tool.hatch.version]
-path = "conclaude/__init__.py"
+path = "claudenator/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["conclaude"]
+packages = ["claudenator"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["conclaude", "tests"]
+only-include = ["claudenator", "tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

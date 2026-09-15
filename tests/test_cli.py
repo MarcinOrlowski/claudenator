@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -18,9 +18,9 @@ import re
 
 import pytest
 
-from conclaude.cli.main import main
-from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
+from claudenator.cli.main import main
+from claudenator.core.settings import Settings
+from claudenator.core.store import SessionStore
 from tests.fabricate import (
     FakeClaude,
     FakeProc,
@@ -302,7 +302,8 @@ def test_no_command_opens_the_screen(
     """No command opens the screen."""
     opened: list[Settings] = []
     monkeypatch.setattr(
-        "conclaude.cli.main.open_screen", lambda settings: opened.append(settings) or 0
+        "claudenator.cli.main.open_screen",
+        lambda settings: opened.append(settings) or 0,
     )
 
     code, out, _err = run(capsys, settings)
@@ -321,7 +322,7 @@ def test_help_flag_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     plain = re.sub(r"\x1b\[[0-9;]*m", "", out)
 
     assert stop.value.code == 0
-    assert plain.startswith("usage: conclaude")
+    assert plain.startswith("usage: claudenator")
 
 
 def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
@@ -331,7 +332,7 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
     out, _err = capsys.readouterr()
 
     assert stop.value.code == 0
-    assert out.startswith("conclaude ")
+    assert out.startswith("claudenator ")
 
 
 def test_scan_reads_every_session_once_and_then_uses_the_cache(
@@ -387,7 +388,7 @@ def test_scan_reports_a_transcript_it_cannot_read_and_goes_on(
     bad, good = new_id(), new_id()
     bad_path = fake.transcript(PROJECT, bad)
     fake.transcript(PROJECT, good)
-    from conclaude.core import store as store_module
+    from claudenator.core import store as store_module
 
     real = store_module.deep_scan
 
@@ -440,7 +441,7 @@ def test_info_shows_the_figures_after_a_scan_and_marks_them_when_stale(
         handle.write(dump_line(prompt_record(sid, "One more thing")))
     code, stale, _err = run(capsys, settings, "info", sid)
 
-    assert "Deep scan:   none  (run 'conclaude scan')" in before
+    assert "Deep scan:   none  (run 'claudenator scan')" in before
     assert "Turns:" not in before
     assert "Turns:        1\n" in after
     assert "Tokens:       370  (10 in, 20 out)\n" in after
@@ -455,7 +456,7 @@ def test_info_shows_the_figures_after_a_scan_and_marks_them_when_stale(
     assert "Turns:        (outdated) 1\n" in stale
     assert "Tokens:       (outdated) 370  (10 in, 20 out)\n" in stale
     assert "Tool calls:   (outdated) 2  (Bash 1, Edit 1)\n" in stale
-    assert "(the transcript changed since; run 'conclaude scan')" in stale
+    assert "(the transcript changed since; run 'claudenator scan')" in stale
 
 
 def test_info_json_carries_the_figures_or_null(

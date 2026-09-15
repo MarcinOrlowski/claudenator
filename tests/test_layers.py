@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -18,7 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import conclaude.core
+import claudenator.core
 
 FORBIDDEN = {"textual", "rich"}
 
@@ -35,7 +35,7 @@ def _imported_roots(tree: ast.AST) -> list[str]:
 
 def test_no_core_module_imports_the_terminal_library() -> None:
     """No core module imports the terminal library."""
-    core_dir = Path(conclaude.core.__file__).parent
+    core_dir = Path(claudenator.core.__file__).parent
     offenders = []
     for path in sorted(core_dir.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -53,7 +53,7 @@ def test_loading_the_store_and_the_command_line_does_not_load_the_terminal_libra
 ):
     """Loading the store and the command line does not load the terminal library."""
     code = (
-        "import sys, conclaude.core.store, conclaude.cli.main; "
+        "import sys, claudenator.core.store, claudenator.cli.main; "
         "loaded = {name.split('.')[0] for name in sys.modules}; "
         f"assert not loaded & {FORBIDDEN!r}, loaded & {FORBIDDEN!r}"
     )

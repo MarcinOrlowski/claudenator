@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -25,10 +25,10 @@ from pathlib import Path
 
 import pytest
 
-from conclaude.core.errors import SessionIsLive, SessionNotFound, TrashFailed
-from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
-from conclaude.core.trash import (
+from claudenator.core.errors import SessionIsLive, SessionNotFound, TrashFailed
+from claudenator.core.settings import Settings
+from claudenator.core.store import SessionStore
+from claudenator.core.trash import (
     MANIFEST_NAME,
     copy_then_remove,
     find_parts,
@@ -422,7 +422,7 @@ def test_a_move_across_filesystems_copies_then_removes(
     elsewhere = other_filesystem(settings.claude_dir)
     if elsewhere is None:
         pytest.skip("no second filesystem to move to")
-    settings.data_dir = Path(tempfile.mkdtemp(prefix="conclaude-", dir=elsewhere))
+    settings.data_dir = Path(tempfile.mkdtemp(prefix="claudenator-", dir=elsewhere))
     try:
         sid = new_id()
         parts = fake.every_part(PROJECT, sid)

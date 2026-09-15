@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -20,18 +20,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from conclaude.core.cache import Cache
-from conclaude.core.errors import (
+from claudenator.core.cache import Cache
+from claudenator.core.errors import (
     AmbiguousSessionId,
     AmbiguousTrashEntry,
-    ConclaudeError,
+    ClaudenatorError,
     ScanFailed,
     SessionNotFound,
     TrashEntryNotFound,
 )
-from conclaude.core.live import LiveSession, find_live
-from conclaude.core.model import Figures, Project, Session, SessionDetails, TrashEntry
-from conclaude.core.scan import (
+from claudenator.core.live import LiveSession, find_live
+from claudenator.core.model import Figures, Project, Session, SessionDetails, TrashEntry
+from claudenator.core.scan import (
     CheapFields,
     count_subagents,
     derive_title,
@@ -42,9 +42,9 @@ from conclaude.core.scan import (
     read_cheap,
     sidecar_for,
 )
-from conclaude.core.settings import Settings
-from conclaude.core.stats import deep_scan
-from conclaude.core.trash import (
+from claudenator.core.settings import Settings
+from claudenator.core.stats import deep_scan
+from claudenator.core.trash import (
     list_entries,
     purge_entry,
     restore_entry,
@@ -63,7 +63,7 @@ class ScanResult:
     session: Session
     figures: Figures | None = None
     fresh: bool = False
-    error: ConclaudeError | None = None
+    error: ClaudenatorError | None = None
 
 
 def sort_key(
@@ -232,7 +232,7 @@ class SessionStore:
                 continue
             try:
                 figures = self.scan_of(session, force=True)
-            except ConclaudeError as error:
+            except ClaudenatorError as error:
                 yield ScanResult(session, error=error)
                 continue
             yield ScanResult(session, figures)

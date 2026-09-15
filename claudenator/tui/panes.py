@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -27,10 +27,10 @@ from textual.widget import Widget
 from textual.widgets import DataTable, Input, OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
-from conclaude import __title__, __version__
-from conclaude.core.format import Formatter
-from conclaude.core.model import Figures, Project, Session, SessionDetails, TrashEntry
-from conclaude.core.store import sort_key
+from claudenator import __title__, __version__
+from claudenator.core.format import Formatter
+from claudenator.core.model import Figures, Project, Session, SessionDetails, TrashEntry
+from claudenator.core.store import sort_key
 
 # The keys every pane uses
 SHARED_BINDINGS = [

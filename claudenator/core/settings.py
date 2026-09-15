@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -27,10 +27,10 @@ def default_claude_dir() -> Path:
 
 
 def default_data_dir() -> Path:
-    """Where conclaude keeps its own data: the Trash and the cache."""
+    """Where claudenator keeps its own data: the Trash and the cache."""
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg).expanduser() if xdg else Path.home() / ".local" / "share"
-    return base / "conclaude"
+    return base / "claudenator"
 
 
 @dataclass

@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -19,9 +19,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from conclaude.core.errors import AmbiguousSessionId, ScanFailed, SessionNotFound
-from conclaude.core.settings import Settings
-from conclaude.core.store import SORT_COLUMNS, SessionStore, sort_key
+from claudenator.core.errors import AmbiguousSessionId, ScanFailed, SessionNotFound
+from claudenator.core.settings import Settings
+from claudenator.core.store import SORT_COLUMNS, SessionStore, sort_key
 from tests.fabricate import (
     FakeClaude,
     answer_records,
@@ -550,7 +550,7 @@ def test_details_take_the_figures_from_the_cache_and_never_scan(
     before = store.details_of(session)
     scanned = store.scan_of(session)
     monkeypatch.setattr(
-        "conclaude.core.store.deep_scan", lambda *_: pytest.fail("scanned again")
+        "claudenator.core.store.deep_scan", lambda *_: pytest.fail("scanned again")
     )
     after = store.details_of(session)
     again = store.scan_of(session)

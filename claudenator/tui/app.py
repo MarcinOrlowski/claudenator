@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -25,14 +25,14 @@ from textual.widget import Widget
 from textual.widgets import Footer
 from textual.worker import get_current_worker
 
-from conclaude import __title__
-from conclaude.core.errors import ConclaudeError
-from conclaude.core.format import Formatter, plural_of
-from conclaude.core.model import Figures, Session, SessionDetails, TrashEntry
-from conclaude.core.settings import Settings
-from conclaude.core.store import ScanResult, SessionStore, projects_of
-from conclaude.tui.about import AboutScreen
-from conclaude.tui.panes import (
+from claudenator import __title__
+from claudenator.core.errors import ClaudenatorError
+from claudenator.core.format import Formatter, plural_of
+from claudenator.core.model import Figures, Session, SessionDetails, TrashEntry
+from claudenator.core.settings import Settings
+from claudenator.core.store import ScanResult, SessionStore, projects_of
+from claudenator.tui.about import AboutScreen
+from claudenator.tui.panes import (
     DaysPane,
     DetailsPane,
     EntriesPane,
@@ -362,7 +362,7 @@ class MainScreen(PaneScreen[None]):
         session = event.session
         try:
             entry = self.store.trash_of(session)
-        except ConclaudeError as error:
+        except ClaudenatorError as error:
             self.notify(str(error), title="Not trashed", severity="error")
             return
         self._trash.insert(0, entry)
@@ -476,7 +476,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         entry = event.entry
         try:
             self.store.restore_of(entry)
-        except ConclaudeError as error:
+        except ClaudenatorError as error:
             self.notify(str(error), title="Not restored", severity="error")
             return
         session = self.store.session_of(entry)
@@ -489,7 +489,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         entry = event.entry
         try:
             self.store.purge_of(entry)
-        except ConclaudeError as error:
+        except ClaudenatorError as error:
             self.notify(str(error), title="Not purged", severity="error")
             return
         self._forget(entry)
@@ -505,11 +505,11 @@ class TrashScreen(PaneScreen[TrashVisit]):
             self.query_one(DaysPane).show(self._entries)
 
 
-class ConclaudeApp(App[None]):
+class ClaudenatorApp(App[None]):
     """The TUI"""
 
     TITLE = __title__
-    CSS_PATH = "conclaude.tcss"
+    CSS_PATH = "claudenator.tcss"
 
     def __init__(self, settings: Settings | None = None) -> None:
         super().__init__()
@@ -532,5 +532,5 @@ class ConclaudeApp(App[None]):
 
 def run(settings: Settings | None = None) -> int:
     """Open the screen and return when the user quits. Returns the exit code."""
-    ConclaudeApp(settings).run()
+    ClaudenatorApp(settings).run()
     return 0
