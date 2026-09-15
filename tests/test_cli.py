@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -303,7 +304,7 @@ def test_no_command_opens_the_screen(
     opened: list[Settings] = []
     monkeypatch.setattr(
         "claudenator.cli.main.open_screen",
-        lambda settings: opened.append(settings) or 0,
+        lambda settings, notes: opened.append(settings) or 0,
     )
 
     code, out, _err = run(capsys, settings)
@@ -482,3 +483,46 @@ def test_info_json_carries_the_figures_or_null(
     assert figures["models"] == {"claude-opus-5": 2}
     assert json.loads(changed)["figures"]["stale"] is True
     assert json.loads(changed)["figures"]["turns"] == 1
+
+
+def test_the_settings_file_reaches_the_command_line(
+    fake: FakeClaude,
+    settings: Settings,
+    config_home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The settings file reaches the command line.
+
+    A time form set on the settings screen shows on the command line too:
+    both read the one settings object, and the file fills it.
+    """
+    sid = new_id()
+    fake.transcript(PROJECT, sid, session_records(sid, PROJECT, custom_title="Hello"))
+    path = config_home / "claudenator" / "config.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text('list_time_format = "absolute"\n', encoding="utf-8")
+
+    code, out, _err = run(capsys, settings, "list")
+
+    assert code == 0
+    assert re.search(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", out)
+
+
+def test_a_fault_in_the_settings_file_is_said_once_on_the_command_line(
+    fake: FakeClaude,
+    settings: Settings,
+    config_home: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A fault in the settings file is said once on the command line."""
+    sid = new_id()
+    fake.transcript(PROJECT, sid, session_records(sid, PROJECT))
+    path = config_home / "claudenator" / "config.toml"
+    path.parent.mkdir(parents=True)
+    path.write_text('confirm_delete = "yes"\n', encoding="utf-8")
+
+    code, out, err = run(capsys, settings, "list")
+
+    assert code == 0
+    assert err.count("confirm_delete") == 1
+    assert sid[:8] in out

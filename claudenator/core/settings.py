@@ -33,6 +33,13 @@ def default_data_dir() -> Path:
     return base / "claudenator"
 
 
+def default_config_file() -> Path:
+    """The file that holds what the user set on the settings screen."""
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg).expanduser() if xdg else Path.home() / ".config"
+    return base / "claudenator" / "config.toml"
+
+
 @dataclass
 class Settings:
     """Every choice the tool makes, with its default."""
@@ -40,6 +47,8 @@ class Settings:
     claude_dir: Path = field(default_factory=default_claude_dir)
     data_dir: Path = field(default_factory=default_data_dir)
     proc_dir: Path = Path("/proc")
+    # See ``core/config.py``.
+    config_file: Path = field(default_factory=default_config_file)
 
     # The screen.
     theme: str = "textual-dark"
@@ -66,6 +75,7 @@ class Settings:
     min_width: int = 30
     min_height: int = 12
     confirm_delete: bool = False
+    confirm_purge: bool = True
 
     # How to format dates. See ``format.Formatter``. Where the time goes decides
     # the form. A list holds it in a column, where the room is short, so it

@@ -32,6 +32,7 @@ from claudenator.core.model import Figures, Session, SessionDetails, TrashEntry
 from claudenator.core.settings import Settings
 from claudenator.core.store import ScanResult, SessionStore, projects_of
 from claudenator.tui.about import AboutScreen
+from claudenator.tui.confirm import ConfirmScreen
 from claudenator.tui.panes import (
     DaysPane,
     DetailsPane,
@@ -40,6 +41,7 @@ from claudenator.tui.panes import (
     FilterBox,
     FilterWanted,
     Lines,
+    Lister,
     ProjectsPane,
     SessionsPane,
     Table,
@@ -47,6 +49,7 @@ from claudenator.tui.panes import (
     TooSmall,
     label_trash_key,
 )
+from claudenator.tui.settings import SettingsChanged, SettingsScreen
 
 
 @dataclass(frozen=True)
@@ -194,6 +197,16 @@ class PaneScreen(Screen[ScreenResultType]):
             return
         self.query_one(Table).focus()
 
+    def refresh_settings(self) -> None:
+        """A setting changed: give the panes the new shape, and draw them again."""
+        self._fit_window()
+        for lister in self.query(Lister):
+            lister.repaint()
+        for table in self.query(Table):
+            table.repaint()
+        for lines in self.query(Lines):
+            lines.repaint()
+
     def _show_trash(self, entries: list[TrashEntry]) -> None:
         """The 't' key says how much the Trash holds now."""
         label_trash_key(self, self.fmt.trash_key(entries))
@@ -260,6 +273,14 @@ class MainScreen(PaneScreen[None]):
     def action_reload(self) -> None:
         """Pseudo-global ``r`` key on any pane."""
         self.load()
+
+    def refresh_settings(self) -> None:
+        """The rows take the order the settings name, the details their time form."""
+        settings = self.store.settings
+        sessions = self.query_one(SessionsPane)
+        sessions.sort_by(settings.sort_column, settings.sort_descending)
+        self.query_one(DetailsPane).show(self._details_of(sessions.selected))
+        super().refresh_settings()
 
     def action_trash_mode(self) -> None:
         """The 't' key: the panes switch to the Trash."""
@@ -358,8 +379,18 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
-        """The 'd' key: the session goes to the Trash."""
+        """The 'd' key: the session goes to the Trash, after a question when asked."""
         session = event.session
+        if not self.store.settings.confirm_delete:
+            self._trash_session(session)
+            return
+        self.app.push_screen(
+            ConfirmScreen("Delete", "Move this session to the Trash?", session.title),
+            lambda yes: self._trash_session(session) if yes else None,
+        )
+
+    def _trash_session(self, session: Session) -> None:
+        """Move one session to the Trash and take its row off the screen."""
         try:
             entry = self.store.trash_of(session)
         except ClaudenatorError as error:
@@ -442,6 +473,11 @@ class TrashScreen(PaneScreen[TrashVisit]):
         """Pseudo-global ``r`` key on any pane."""
         self.load()
 
+    def refresh_settings(self) -> None:
+        """The entry on view takes the time form the settings name."""
+        self.query_one(EntryPane).show(self.query_one(EntriesPane).selected)
+        super().refresh_settings()
+
     def action_sessions_mode(self) -> None:
         """The 't' key: the panes switch back to the sessions."""
         self.dismiss(TrashVisit(self._entries, self._restored))
@@ -485,8 +521,20 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self._forget(entry)
 
     def on_entries_pane_purge_wanted(self, event: EntriesPane.PurgeWanted) -> None:
-        """The ``x`` key: the entry is gone for good."""
+        """The ``x`` key: the entry is gone for good, after a question when asked."""
         entry = event.entry
+        if not self.store.settings.confirm_purge:
+            self._purge_entry(entry)
+            return
+        self.app.push_screen(
+            ConfirmScreen(
+                "Purge", "Remove this entry from the disk for good?", entry.title
+            ),
+            lambda yes: self._purge_entry(entry) if yes else None,
+        )
+
+    def _purge_entry(self, entry: TrashEntry) -> None:
+        """Take one entry off the disk and off the screen."""
         try:
             self.store.purge_of(entry)
         except ClaudenatorError as error:
@@ -515,9 +563,12 @@ class ClaudenatorApp(App[None]):
     # takes its key and its footer entry with it.
     ENABLE_COMMAND_PALETTE = False
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(
+        self, settings: Settings | None = None, notes: list[str] | None = None
+    ) -> None:
         super().__init__()
         self.settings = settings if settings is not None else Settings()
+        self.notes = list(notes or [])
         self.store = SessionStore(self.settings)
         self.fmt = Formatter(self.settings)
 
@@ -529,12 +580,40 @@ class ClaudenatorApp(App[None]):
         """The ``?`` key on any pane: the About box opens over the panes."""
         self.push_screen(AboutScreen())
 
+    def action_settings(self) -> None:
+        """The ``F2`` key on any pane: the settings box opens over the panes."""
+        self.push_screen(SettingsScreen(self.settings))
+
+    def on_settings_changed(self, event: SettingsChanged) -> None:
+        """The settings box changed an option: put it in effect at once."""
+        event.stop()
+        self.settings_changed()
+
+    def settings_changed(self) -> None:
+        """Put every setting in effect, on every screen that is open."""
+        self.apply_theme()
+        for screen in self.screen_stack:
+            if isinstance(screen, PaneScreen):
+                screen.refresh_settings()
+
+    def apply_theme(self) -> bool:
+        """Take the theme the settings name. False when the app has no such theme."""
+        wanted = self.settings.theme
+        if wanted not in self.available_themes:
+            return False
+        self.theme = wanted
+        return True
+
     def on_mount(self) -> None:
-        """The theme in effect is the one the settings name."""
-        self.theme = self.settings.theme
+        """Take the theme the settings name, and say every note the file gave."""
+        notes = list(self.notes)
+        if not self.apply_theme():
+            notes.append(f"There is no theme named '{self.settings.theme}'.")
+        if notes:
+            self.notify("\n".join(notes), title="Settings", severity="warning")
 
 
-def run(settings: Settings | None = None) -> int:
+def run(settings: Settings | None = None, notes: list[str] | None = None) -> int:
     """Open the screen and return when the user quits. Returns the exit code."""
-    ClaudenatorApp(settings).run()
+    ClaudenatorApp(settings, notes).run()
     return 0

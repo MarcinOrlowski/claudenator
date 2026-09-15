@@ -159,3 +159,100 @@ AboutScreen {
     text-align: center;
     text-wrap: nowrap;
 }
+
+/* The question before a session goes to the Trash, or an entry off the disk. */
+ConfirmScreen {
+    align: center middle;
+}
+
+#confirm {
+    width: 60;
+    height: auto;
+    max-width: 100%;
+    padding: 1 1 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+/* The thing the question is about. It never wraps */
+#confirm-subject {
+    width: 1fr;
+    padding: 1 0;
+    color: $text-accent;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#confirm-buttons {
+    height: 3;
+    width: 1fr;
+    align: right middle;
+}
+
+#confirm-buttons Button {
+    min-width: 8;
+    margin: 0 0 0 1;
+}
+
+SettingsScreen {
+    align: center middle;
+}
+
+#settings {
+    width: 68;
+    height: 17;
+    max-width: 100%;
+    max-height: 100%;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+/* The sections take the room the buttons leave. */
+#settings > TabbedContent {
+    height: 1fr;
+}
+
+/* The options of one section. */
+.option-page {
+    height: 1fr;
+    padding: 0 1;
+}
+
+.option-row {
+    height: 3;
+    width: 1fr;
+}
+
+/* A switch is as wide as a switch. */
+.option-row Switch {
+    width: auto;
+}
+
+/* As wide as the longest name. */
+.option-label {
+    width: 26;
+    height: 3;
+    content-align: left middle;
+}
+
+.option-value {
+    width: 1fr;
+}
+
+#settings-buttons {
+    dock: bottom;
+    height: 3;
+    width: 1fr;
+    padding: 0 1;
+}
+
+#settings-buttons Button {
+    min-width: 8;
+    margin: 0 0 0 1;
+}
+
+.button-gap {
+    width: 1fr;
+}

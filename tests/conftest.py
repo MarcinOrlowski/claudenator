@@ -38,6 +38,15 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     return True
 
 
+@pytest.fixture(autouse=True)
+def config_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point the settings file at the temporary directory, for tests"""
+
+    home = tmp_path / "xdg-config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home))
+    return home
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     """Settings whose three roots all sit inside the temporary directory."""

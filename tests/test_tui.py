@@ -27,12 +27,27 @@ from textual.containers import VerticalScroll
 from textual.geometry import Region
 from textual.pilot import Pilot
 from textual.theme import BUILTIN_THEMES
-from textual.widgets import DataTable, Static
+from textual.widgets import (
+    Button,
+    DataTable,
+    Input,
+    Select,
+    Static,
+    Switch,
+    TabbedContent,
+)
 
 import claudenator.core.store
 import claudenator.tui.app
 from claudenator import __author__, __description__, __title__, __url__, __version__
 from claudenator.core.cache import Cache
+from claudenator.core.config import (
+    OPTIONS,
+    SORT_COLUMNS,
+    apply_file,
+    default_of,
+    groups,
+)
 from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, TrashEntry
 from claudenator.core.settings import Settings
@@ -40,9 +55,11 @@ from claudenator.core.store import SessionStore
 from claudenator.core.trash import trash_session
 from claudenator.tui.about import QR_BORDER, QR_ERROR, AboutScreen
 from claudenator.tui.app import ClaudenatorApp, FullScreen, MainScreen, TrashScreen
+from claudenator.tui.confirm import ConfirmScreen
 from claudenator.tui.panes import (
     ALL_DAYS,
     ALL_PROJECTS,
+    COLUMNS,
     DaysPane,
     DetailsPane,
     EntriesPane,
@@ -56,6 +73,7 @@ from claudenator.tui.panes import (
     TitleBar,
     TooSmall,
 )
+from claudenator.tui.settings import OptionRow, SettingsScreen, slug
 from tests.fabricate import (
     FakeClaude,
     FakeProc,
@@ -1731,6 +1749,8 @@ async def test_x_removes_the_entry_for_good(
         await pilot.pause()
         await pilot.press("t", "x")
         await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
         emptied = cursor(app.screen.query_one(EntriesPane)), days(app), toasts(app)
         await pilot.press("t")
         await pilot.pause()
@@ -1858,6 +1878,8 @@ async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_chan
         await pilot.pause()
         after_restore = titles(app)
         await pilot.press("x")
+        await pilot.pause()
+        await pilot.press("y")
         await pilot.pause()
         after_purge = titles(app)
         await pilot.press("t")
@@ -2012,6 +2034,8 @@ async def test_the_last_entry_of_a_day_takes_the_day_with_it(
         await pilot.pause()
         before = pane.selected_day, rows(table)
         await pilot.press("x")
+        await pilot.pause()
+        await pilot.press("y")
         await pilot.pause()
         after = days(app), pane.selected_day, cursor(table), type(app.focused)
         text = app.screen.query_one(EntryPane).text
@@ -2884,3 +2908,577 @@ async def test_a_change_of_width_keeps_the_rows_on_view_where_they_are(
 
     assert before[0] > 0
     assert after == before
+
+
+def option_row(app: ClaudenatorApp, name: str) -> OptionRow:
+    """The row of one option on the settings box.
+
+    Every section is built when the box opens, so a row is there whether its
+    section is at the front or behind another one.
+    """
+    return next(row for row in app.screen.query(OptionRow) if row.option.name == name)
+
+
+def test_the_sort_columns_are_the_columns_of_the_sessions_table() -> None:
+    """The sort columns are the columns of the sessions table."""
+    assert tuple(COLUMNS) == SORT_COLUMNS
+
+
+async def test_the_f2_key_opens_the_settings_box_and_the_footer_lists_it(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'F2' key opens the settings box, and the footer lists it."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        key = shown_keys(app).get("f2")
+        await pilot.press("f2")
+        await pilot.pause()
+        opened = type(app.screen)
+        tabs = [str(pane.id) for pane in app.screen.query("TabPane")]
+        rows = [row.option.name for row in app.screen.query(OptionRow)]
+        await pilot.press("escape")
+        await pilot.pause()
+        closed = type(app.screen)
+
+    assert key == "Settings"
+    assert opened is SettingsScreen
+    assert tabs == [slug(group) for group in groups()]
+    assert rows[:3] == ["theme", "start_pane", "sort_column"]
+    assert rows[-2:] == ["confirm_delete", "confirm_purge"]
+    assert len(rows) == len(OPTIONS)
+    assert closed is MainScreen
+
+
+async def test_the_f2_key_in_the_box_moves_to_the_next_section(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'F2' key in the box moves to the next section, and the last one wraps."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        seen = [app.screen.query_one(TabbedContent).active]
+        for _ in groups():
+            await pilot.press("f2")
+            await pilot.pause()
+            seen.append(app.screen.query_one(TabbedContent).active)
+
+    wanted = [slug(group) for group in groups()]
+    assert seen == [*wanted, wanted[0]]
+
+
+async def test_a_change_of_theme_takes_effect_at_once_behind_the_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A change of theme takes effect at once, behind the box."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        before = app.theme, settings.theme
+        chooser = option_row(app, "theme").query_one(Select)
+        listed = [value for _, value in chooser._options]
+        chooser.value = "gruvbox"
+        await pilot.pause()
+        after = app.theme, settings.theme
+
+    assert before == ("textual-dark", "textual-dark")
+    assert after == ("gruvbox", "gruvbox")
+    assert listed == list(app.available_themes)
+
+
+async def test_a_change_of_the_time_form_reaches_the_rows_at_once(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A change of the time form reaches the rows, and the details, at once."""
+    sid = new_id()
+    fake.transcript("/p/x", sid, session_records(sid, "/p/x"), mtime=1000)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        details = app.query_one(DetailsPane)
+        before = str(table.get_cell(sid, "last_used")), details.text
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "list_time_format").query_one(Select).value = "absolute"
+        option_row(app, "details_time_format").query_one(Select).value = "relative"
+        await pilot.pause()
+        after = str(table.get_cell(sid, "last_used")), details.text
+
+    assert re.fullmatch(r"just now|[\dymdhs ]+ ago", before[0])
+    assert re.search(r"^Last used: +\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \(", before[1], re.M)
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", after[0])
+    assert re.search(r"^Last used: +(just now|[\dymdhs ]+ ago)$", after[1], re.M)
+
+
+async def test_a_change_of_the_sort_order_reaches_the_rows_at_once(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A change of the sort order reaches the rows at once."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        before = rows(table)
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "sort_descending").query_one(Switch).value = False
+        await pilot.pause()
+        after = rows(table)
+
+    assert before == [a1, a2, b1]
+    assert after == [b1, a2, a1]
+
+
+async def test_ctrl_d_puts_the_option_under_the_cursor_back_to_its_default(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'ctrl+d' key puts the option under the cursor back to its default.
+
+    The library gives that key to a text box, to take out one character. The
+    box hands it back, so the key means the same thing on every option.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        box = option_row(app, "time_pattern").query_one(Input)
+        box.focus()
+        box.value = "%H:%M"
+        await pilot.pause()
+        changed = settings.time_pattern
+        await pilot.press("ctrl+d")
+        await pilot.pause()
+        after = settings.time_pattern, box.value
+
+    assert changed == "%H:%M"
+    assert after == (default_of("time_pattern"), "%Y-%m-%d %H:%M:%S")
+
+
+async def test_the_reset_all_button_puts_every_option_back_to_its_default(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'Reset all' button puts every option back to its default."""
+    three_sessions(fake)
+    settings.theme = "nord"
+    settings.confirm_delete = True
+    settings.confirm_purge = False
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        before = app.theme, settings.confirm_delete, settings.confirm_purge
+        app.screen.query_one("#reset-all", Button).press()
+        await pilot.pause()
+        after = app.theme, settings.confirm_delete, settings.confirm_purge
+        shown = option_row(app, "confirm_purge").query_one(Switch).value
+
+    assert before == ("nord", True, False)
+    assert after == ("textual-dark", False, True)
+    assert shown is True
+
+
+async def test_escape_puts_every_option_back_and_writes_no_file(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'escape' key puts every option back, and the file is not touched."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "theme").query_one(Select).value = "nord"
+        option_row(app, "confirm_delete").query_one(Switch).value = True
+        await pilot.pause()
+        changed = app.theme, settings.theme, settings.confirm_delete
+        await pilot.press("escape")
+        await pilot.pause()
+        after = app.theme, settings.theme, settings.confirm_delete, type(app.screen)
+
+    assert changed == ("nord", "nord", True)
+    assert after == ("textual-dark", "textual-dark", False, MainScreen)
+    assert not settings.config_file.exists()
+
+
+async def test_ctrl_s_writes_the_file_and_closes_the_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'ctrl+s' key writes the file and closes the box."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "theme").query_one(Select).value = "nord"
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        after = type(app.screen), app.theme
+        said = toasts(app)
+
+    text = settings.config_file.read_text(encoding="utf-8")
+    kept = [line for line in text.splitlines() if line and not line.startswith("#")]
+    assert after == (MainScreen, "nord")
+    assert kept[0] == 'theme = "nord"'
+    assert len(kept) == len(OPTIONS)
+    assert said[0][1] == "Settings"
+    assert str(settings.config_file) in said[0][2]
+
+
+async def test_what_the_file_holds_is_in_effect_at_start(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """What the file holds is in effect at start."""
+    three_sessions(fake)
+    settings.config_file.parent.mkdir(parents=True)
+    settings.config_file.write_text(
+        'theme = "nord"\nstart_pane = "projects"\n', encoding="utf-8"
+    )
+    notes = apply_file(settings)
+    app = ClaudenatorApp(settings, notes)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        started = app.theme, type(app.focused)
+        said = toasts(app)
+
+    assert notes == []
+    assert started == ("nord", ProjectsPane)
+    assert said == []
+
+
+async def test_a_fault_in_the_file_is_said_once_and_the_defaults_hold(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A fault in the file is said once, and the defaults hold."""
+    three_sessions(fake)
+    settings.config_file.parent.mkdir(parents=True)
+    settings.config_file.write_text('confirm_delete = "yes"\n', encoding="utf-8")
+    notes = apply_file(settings)
+    app = ClaudenatorApp(settings, notes)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        said = toasts(app)
+
+    assert settings.confirm_delete is False
+    assert len(said) == 1
+    assert said[0][0] == "warning"
+    assert said[0][1] == "Settings"
+    assert "confirm_delete" in said[0][2]
+
+
+async def test_a_theme_the_app_does_not_have_keeps_the_default_and_says_so(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A theme the app does not have keeps the default, and says so."""
+    three_sessions(fake)
+    settings.theme = "no-such-theme"
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        said = toasts(app)
+        theme = app.theme
+
+    assert theme == "textual-dark"
+    assert len(said) == 1
+    assert "no-such-theme" in said[0][2]
+
+
+async def test_the_settings_box_opens_on_the_trash_view_too(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The settings box opens on the Trash view too, and its changes reach it."""
+    a1, _a2, _b1 = three_sessions(fake)
+    trash_session(settings, SessionStore(settings).find_session(a1))
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        entries = app.screen.query_one(EntriesPane)
+        key = shown_keys(app).get("f2")
+        before = str(entries.get_cell(rows(entries)[0], "trashed_at"))
+        await pilot.press("f2")
+        await pilot.pause()
+        opened = type(app.screen)
+        option_row(app, "list_time_format").query_one(Select).value = "absolute"
+        await pilot.pause()
+        during = str(entries.get_cell(rows(entries)[0], "trashed_at"))
+        await pilot.press("escape")
+        await pilot.pause()
+        after = str(entries.get_cell(rows(entries)[0], "trashed_at"))
+        closed = type(app.screen)
+
+    assert key == "Settings"
+    assert opened is SettingsScreen
+    assert closed is TrashScreen
+    assert re.fullmatch(r"just now|[\dymdhs ]+ ago", before)
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", during)
+    assert re.fullmatch(r"just now|[\dymdhs ]+ ago", after)
+
+
+async def test_tab_moves_from_one_option_to_the_next(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'tab' key moves from one option to the next, and then to the button.
+
+    The page the options sit on scrolls, so the library would give it the focus
+    too. It does not: a stop that changes nothing is a stop in the way.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        seen = []
+        for _ in range(4):
+            await pilot.press("tab")
+            await pilot.pause()
+            node = app.focused
+            seen.append((type(node).__name__, node.id))
+
+    assert seen == [
+        ("Select", None),
+        ("Select", None),
+        ("Button", "reset-all"),
+        ("Button", "save"),
+    ]
+
+
+async def test_the_box_has_a_save_an_apply_and_a_cancel_button(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The box has a Save, an Apply and a Cancel button, and Reset all apart."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        buttons = [
+            (str(button.id), str(button.label))
+            for button in app.screen.query("#settings-buttons Button").results(Button)
+        ]
+
+    assert buttons == [
+        ("reset-all", "Reset all"),
+        ("save", "Save"),
+        ("apply", "Apply"),
+        ("cancel", "Cancel"),
+    ]
+
+
+async def test_apply_writes_the_file_and_the_box_stays_open(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Apply writes the file, and the box stays open."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "theme").query_one(Select).value = "nord"
+        await pilot.pause()
+        app.screen.query_one("#apply", Button).press()
+        await pilot.pause()
+        after = type(app.screen), app.theme
+
+    written = settings.config_file.read_text(encoding="utf-8")
+    assert after == (SettingsScreen, "nord")
+    assert 'theme = "nord"' in written
+
+
+async def test_cancel_after_apply_goes_back_to_the_applied_state(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Cancel after Apply goes back to the applied state"""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        chooser = option_row(app, "theme").query_one(Select)
+        chooser.value = "nord"
+        await pilot.pause()
+        await pilot.press("ctrl+a")
+        await pilot.pause()
+        applied = app.theme, settings.theme
+        chooser.value = "gruvbox"
+        await pilot.pause()
+        later = app.theme
+        app.screen.query_one("#cancel", Button).press()
+        await pilot.pause()
+        after = type(app.screen), app.theme, settings.theme
+
+    written = settings.config_file.read_text(encoding="utf-8")
+    assert applied == ("nord", "nord")
+    assert later == "gruvbox"
+    assert after == (MainScreen, "nord", "nord")
+    assert 'theme = "nord"' in written
+
+
+async def test_the_save_button_closes_the_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Save button writes the file and closes the box."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "start_pane").query_one(Select).value = "projects"
+        await pilot.pause()
+        app.screen.query_one("#save", Button).press()
+        await pilot.pause()
+        closed = type(app.screen)
+
+    written = settings.config_file.read_text(encoding="utf-8")
+    assert closed is MainScreen
+    assert 'start_pane = "projects"' in written
+
+
+async def test_d_asks_first_when_the_settings_say_so(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'd' key asks first when the settings say so, and a yes does the move."""
+    a1, a2, b1 = three_sessions(fake)
+    settings.confirm_delete = True
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        await pilot.press("d")
+        await pilot.pause()
+        asked = type(app.screen), rows(table), trashed(settings)
+        box = app.screen.query_one("#confirm")
+        question = str(app.screen.query_one("#confirm-question", Static).content)
+        subject = str(app.screen.query_one("#confirm-subject", Static).content)
+        focused = app.focused
+        await pilot.press("y")
+        await pilot.pause()
+        after = type(app.screen), rows(table), trashed(settings)
+
+    assert asked == (ConfirmScreen, [a1, a2, b1], [])
+    assert str(box.border_title) == "Delete"
+    assert question == "Move this session to the Trash?"
+    assert subject == "A1"
+    assert isinstance(focused, Button) and focused.id == "no"
+    assert after == (MainScreen, [a2, b1], [a1])
+
+
+async def test_a_no_leaves_the_session_where_it_is(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A no leaves the session where it is. So does 'escape'."""
+    a1, a2, b1 = three_sessions(fake)
+    settings.confirm_delete = True
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        await pilot.press("d")
+        await pilot.pause()
+        await pilot.press("n")
+        await pilot.pause()
+        after_no = type(app.screen), rows(table), trashed(settings)
+        await pilot.press("d")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        after_escape = type(app.screen), rows(table), trashed(settings)
+
+    assert after_no == (MainScreen, [a1, a2, b1], [])
+    assert after_escape == (MainScreen, [a1, a2, b1], [])
+
+
+async def test_d_does_not_ask_when_the_settings_do_not_say_so(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'd' key does not ask when the setting is OFF. That is the default."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        await pilot.press("d")
+        await pilot.pause()
+        after = type(app.screen), rows(table), trashed(settings)
+
+    assert settings.confirm_delete is False
+    assert after == (MainScreen, [a2, b1], [a1])
+
+
+async def test_x_asks_first_by_default_because_a_purge_cannot_be_undone(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'x' key asks first by default, because a purge cannot be undone."""
+    a1, _a2, _b1 = three_sessions(fake)
+    entry = SessionStore(settings).trash(a1)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t", "x")
+        await pilot.pause()
+        asked = type(app.screen), entry.path.exists()
+        title = str(app.screen.query_one("#confirm").border_title)
+        await pilot.press("n")
+        await pilot.pause()
+        kept = type(app.screen), entry.path.exists()
+        await pilot.press("x")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        gone = entry.path.exists(), trashed(settings)
+
+    assert settings.confirm_purge is True
+    assert asked == (ConfirmScreen, True)
+    assert title == "Purge"
+    assert kept == (TrashScreen, True)
+    assert gone == (False, [])
+
+
+async def test_a_switch_on_the_settings_box_turns_the_question_on(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A switch on the settings box turns the question on, with no restart."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "confirm_delete").query_one(Switch).value = True
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        kept_off = settings.confirm_delete
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "confirm_delete").query_one(Switch).value = True
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        asked = type(app.screen), rows(table)
+
+    assert kept_off is False
+    assert settings.confirm_delete is True
+    assert asked == (ConfirmScreen, [a1, a2, b1])

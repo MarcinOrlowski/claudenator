@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from claudenator import __version__
+from claudenator.core.config import apply_file
 from claudenator.core.errors import ClaudenatorError
 from claudenator.core.format import Formatter, plural_of
 from claudenator.core.model import Session
@@ -36,11 +37,11 @@ def short_title(session: Session) -> str:
     return text
 
 
-def open_screen(settings: Settings) -> int:
+def open_screen(settings: Settings, notes: list[str]) -> int:
     """Run the TUI."""
     from claudenator.tui.app import run
 
-    return run(settings)
+    return run(settings, notes)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -89,16 +90,17 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def settings_from(args: argparse.Namespace) -> Settings:
-    """A settings object with the command-line overrides applied."""
+def settings_from(args: argparse.Namespace) -> tuple[Settings, list[str]]:
+    """A settings object, and a note for every fault in the settings file."""
     settings = Settings()
+    notes = apply_file(settings)
     if args.claude_dir is not None:
         settings.claude_dir = args.claude_dir.expanduser()
     if args.data_dir is not None:
         settings.data_dir = args.data_dir.expanduser()
     if args.proc_dir is not None:
         settings.proc_dir = args.proc_dir.expanduser()
-    return settings
+    return settings, notes
 
 
 def cmd_list(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> int:
@@ -183,9 +185,11 @@ def main(argv: list[str] | None = None) -> int:
     """Run the command line. Returns the exit code."""
     parser = build_parser()
     args = parser.parse_args(argv)
-    settings = settings_from(args)
+    settings, notes = settings_from(args)
     if args.command is None:
-        return open_screen(settings)
+        return open_screen(settings, notes)
+    for note in notes:
+        print(f"claudenator: {note}", file=sys.stderr)
     store = SessionStore(settings)
     fmt = Formatter(settings)
     try:

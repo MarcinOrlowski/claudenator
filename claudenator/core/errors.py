@@ -127,6 +127,15 @@ class CacheDamaged(ClaudenatorError):
         self.cause = cause
 
 
+class SettingsNotSaved(ClaudenatorError):
+    """The settings file could not be written."""
+
+    def __init__(self, path: Path, cause: OSError) -> None:
+        super().__init__(f"could not write {path}: {cause.strerror or cause}")
+        self.path = path
+        self.cause = cause
+
+
 class PurgeFailed(ClaudenatorError):
     """An entry could not be removed from the disk."""
 
