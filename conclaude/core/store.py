@@ -16,16 +16,18 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
+from conclaude.core.cache import Cache
 from conclaude.core.errors import (
     AmbiguousSessionId,
     AmbiguousTrashEntry,
+    ScanFailed,
     SessionNotFound,
     TrashEntryNotFound,
 )
 from conclaude.core.live import LiveSession, find_live
-from conclaude.core.model import Project, Session, SessionDetails, TrashEntry
+from conclaude.core.model import Figures, Project, Session, SessionDetails, TrashEntry
 from conclaude.core.scan import (
     CheapFields,
     count_subagents,
@@ -38,6 +40,7 @@ from conclaude.core.scan import (
     sidecar_for,
 )
 from conclaude.core.settings import Settings
+from conclaude.core.stats import deep_scan
 from conclaude.core.trash import (
     list_entries,
     purge_entry,
@@ -50,8 +53,14 @@ from conclaude.core.trash import (
 SORT_COLUMNS = ("state", "title", "last_used", "created", "size", "msgs", "project")
 
 
-def sort_key(column: str) -> Callable[[Session], Any]:
-    """The key that orders sessions by ``column``. An unknown column orders by last use."""
+def sort_key(
+    column: str, figures: Mapping[str, Figures] | None = None
+) -> Callable[[Session], Any]:
+    """The key that orders sessions by ``column``. An unknown column orders by last use.
+
+    The turn count lives in ``figures``, by session id. A session with none
+    orders below one with any.
+    """
     if column == "state":
         return lambda session: (session.live, session.is_fork, session.damaged)
     if column == "title":
@@ -61,8 +70,11 @@ def sort_key(column: str) -> Callable[[Session], Any]:
     if column == "size":
         return lambda session: session.size
     if column == "msgs":
-        # Turn count: filled by a deep scan, which does not exist yet.
-        return lambda _: 0
+        known = figures or {}
+        return lambda session: (
+            known[session.id].turns if session.id in known else -1,
+            session.last_used,
+        )
     if column == "project":
         return lambda session: session.project_path
     return lambda session: session.last_used
@@ -90,6 +102,7 @@ class SessionStore:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings if settings is not None else Settings()
+        self.cache = Cache(self.settings)
         self._history: dict[str, str] | None = None
 
     def reload(self) -> None:
@@ -145,11 +158,55 @@ class SessionStore:
         return self.details_of(self.find_session(wanted))
 
     def details_of(self, session: Session) -> SessionDetails:
-        """One session in full. For a fork, this reads the whole transcript once."""
+        """One session in full. For a fork, this reads the whole transcript once.
+
+        The deep-scan figures come from the cache alone. Nothing is computed.
+        """
         inherited = 0
         if session.is_fork:
             inherited = inherited_bytes(session.transcript_path, session.id)
-        return SessionDetails(session=session, inherited_bytes=inherited)
+        return SessionDetails(
+            session=session,
+            inherited_bytes=inherited,
+            figures=self.figures_of(session),
+        )
+
+    def figures_of(self, session: Session) -> Figures | None:
+        """The cached deep-scan figures of a session, or None before its first scan.
+
+        Figures of a transcript that changed since come back marked stale.
+        """
+        return self.cache.get(session.transcript_path)
+
+    def figures_for(self, sessions: list[Session]) -> dict[str, Figures]:
+        """The cached figures of these sessions, by session id, in one read of the cache.
+
+        A session never scanned is left out. Nothing is computed.
+        """
+        cached = self.cache.get_all()
+        return {
+            session.id: cached[session.transcript_path]
+            for session in sessions
+            if session.transcript_path in cached
+        }
+
+    def scan_of(self, session: Session, force: bool = False) -> Figures:
+        """The deep-scan figures of a session, fresh.
+
+        Fresh figures in the cache are handed back as they are. Stale or
+        missing ones are computed from the whole transcript and cached, and
+        so are fresh ones with ``force``. Raises ``ScanFailed`` when the
+        transcript cannot be read.
+        """
+        found = self.figures_of(session)
+        if found is not None and not found.stale and not force:
+            return found
+        try:
+            figures = deep_scan(session.transcript_path)
+        except OSError as error:
+            raise ScanFailed(session.id, session.transcript_path, error) from error
+        self.cache.put(figures)
+        return figures
 
     def trash(self, wanted: str, reason: str | None = None) -> TrashEntry:
         """Move a session to the Trash, by its id or a unique prefix of it.

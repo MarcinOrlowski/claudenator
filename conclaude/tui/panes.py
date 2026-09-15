@@ -28,7 +28,7 @@ from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from conclaude import __title__, __version__
 from conclaude.core.format import Formatter
-from conclaude.core.model import Project, Session, SessionDetails, TrashEntry
+from conclaude.core.model import Figures, Project, Session, SessionDetails, TrashEntry
 from conclaude.core.store import sort_key
 
 # The keys every pane uses
@@ -500,6 +500,7 @@ class SessionsPane(Table):
         super().__init__("sessions", "Sessions", fmt)
         self._sessions: list[Session] = []
         self._by_id: dict[str, Session] = {}
+        self._figures: dict[str, Figures] = {}
         self._with_project = False
         self._sort_column = "last_used"
         self._sort_descending = True
@@ -516,16 +517,31 @@ class SessionsPane(Table):
         """The column that orders the rows, and whether it is biggest first."""
         return self._sort_column, self._sort_descending
 
-    def show(self, sessions: list[Session], with_project: bool) -> None:
+    def show(
+        self,
+        sessions: list[Session],
+        with_project: bool,
+        figures: dict[str, Figures] | None = None,
+    ) -> None:
         """Replace the rows. The cursor stays on its session when it is still listed.
 
         The Project column is shown only when ``with_project`` is true, which
-        is the 'All projects' view.
+        is the 'All projects' view. ``figures`` hold the cached deep-scan
+        numbers by session id, and fill the Msgs column. A session with none
+        gets a blank cell.
         """
         self._sessions = list(sessions)
         self._by_id = {session.id: session for session in self._sessions}
+        self._figures = dict(figures or {})
         self._with_project = with_project
         self._rebuild()
+
+    def _turns(self, session: Session) -> str:
+        """The Msgs cell: the cached turn count, ``*12`` when stale, blank with none."""
+        figures = self._figures.get(session.id)
+        if figures is None:
+            return ""
+        return self.fmt.stale(self.fmt.count(figures.turns), figures)
 
     def drop(self, session_id: str) -> None:
         """Take one session out of the table in place."""
@@ -600,7 +616,9 @@ class SessionsPane(Table):
         """The sessions on view: the filter in effect, in the order in effect."""
         kept = [s for s in self._sessions if self._matches(s.title)]
         return sorted(
-            kept, key=sort_key(self._sort_column), reverse=self._sort_descending
+            kept,
+            key=sort_key(self._sort_column, self._figures),
+            reverse=self._sort_descending,
         )
 
     def _state_width(self, labels: dict[str, str]) -> int:
@@ -613,11 +631,12 @@ class SessionsPane(Table):
         padding = 2 * self.cell_padding
         times = [len(self.fmt.timestamp(s.last_used)) for s in self._sessions]
         sizes = [len(self.fmt.size(s.size)) for s in self._sessions]
+        turns = [len(self._turns(s)) for s in self._sessions]
         fixed = (
             self._state_width(labels)
             + max([len(labels["last_used"]), *times])
             + max([len(labels["size"]), *sizes])
-            + len(labels["msgs"])
+            + max([len(labels["msgs"]), *turns])
             + 4 * padding
         )
         room = self.size.width - SCROLLBAR_WIDTH - fixed
@@ -635,7 +654,7 @@ class SessionsPane(Table):
         self.add_column(labels["title"], key="title", width=title_width)
         self.add_column(labels["last_used"], key="last_used")
         self.add_column(Text(labels["size"], justify="right"), key="size")
-        self.add_column(labels["msgs"], key="msgs")
+        self.add_column(Text(labels["msgs"], justify="right"), key="msgs")
         if self._with_project:
             self.add_column(labels["project"], key="project", width=project_width)
         for session in self._rows():
@@ -648,8 +667,7 @@ class SessionsPane(Table):
                 ),
                 self.fmt.timestamp(session.last_used),
                 Text(self.fmt.size(session.size), justify="right"),
-                # Turn count: filled by a deep scan, which does not exist yet.
-                "",
+                Text(self._turns(session), justify="right"),
             ]
             if self._with_project:
                 cells.append(

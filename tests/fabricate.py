@@ -184,6 +184,75 @@ def session_records(
     return records
 
 
+def answer_records(
+    session_id: str,
+    *,
+    model: str = "claude-opus-5",
+    message_id: str | None = None,
+    usage: dict[str, Any] | None = None,
+    tools: Iterable[str] = (),
+    timestamp: str = STARTED,
+    api_error: bool = False,
+) -> list[dict[str, Any]]:
+    """The records of one API answer, as Claude Code writes them.
+
+    One record per content block: a text block, then a ``tool_use`` block
+    for every name in ``tools``. Every record repeats the same message id,
+    model and usage, so a count that takes them once must dedupe. With
+    ``api_error`` the answer is one Claude Code made itself, with no API
+    call: the model is ``<synthetic>``.
+    """
+    message_id = message_id or f"msg_{new_id()}"
+    if usage is None:
+        usage = {
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "cache_read_input_tokens": 300,
+            "cache_creation_input_tokens": 40,
+        }
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": "Done."}]
+    blocks += [
+        {"type": "tool_use", "id": f"toolu_{new_id()}", "name": name, "input": {}}
+        for name in tools
+    ]
+    records = []
+    for index, block in enumerate(blocks):
+        record: dict[str, Any] = {
+            "parentUuid": None,
+            "type": "assistant",
+            "uuid": new_id(),
+            "apiBlockIndex": index,
+            "timestamp": timestamp,
+            "sessionId": session_id,
+            "message": {
+                "id": message_id,
+                "model": "<synthetic>" if api_error else model,
+                "role": "assistant",
+                "content": [block],
+                "usage": usage,
+            },
+        }
+        if api_error:
+            record["isApiErrorMessage"] = True
+        records.append(record)
+    return records
+
+
+def prompt_record(
+    session_id: str, text: str, timestamp: str = STARTED
+) -> dict[str, Any]:
+    """One message the user really typed."""
+    return {
+        "parentUuid": None,
+        "type": "user",
+        "uuid": new_id(),
+        "origin": {"kind": "human"},
+        "message": {"role": "user", "content": text},
+        "timestamp": timestamp,
+        "sessionId": session_id,
+    }
+
+
 class FakeClaude:
     """A Claude Code data folder built from scratch in a temporary directory."""
 

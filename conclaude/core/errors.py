@@ -106,6 +106,27 @@ class RestoreFailed(ConclaudeError):
         self.cause = cause
 
 
+class ScanFailed(ConclaudeError):
+    """A transcript could not be read to its end."""
+
+    def __init__(self, session_id: str, path: Path, cause: OSError) -> None:
+        super().__init__(f"could not read {path}: {cause.strerror or cause}")
+        self.session_id = session_id
+        self.path = path
+        self.cause = cause
+
+
+class CacheDamaged(ConclaudeError):
+    """The cache file is not a database the tool can use. Remove it and scan again."""
+
+    def __init__(self, path: Path, cause: Exception) -> None:
+        super().__init__(
+            f"the cache {path} is damaged ({cause}); remove it and scan again"
+        )
+        self.path = path
+        self.cause = cause
+
+
 class PurgeFailed(ConclaudeError):
     """An entry could not be removed from the disk."""
 

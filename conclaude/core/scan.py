@@ -177,7 +177,8 @@ def derive_title(
     return session_id[:8], "id"
 
 
-def _parse(line: bytes) -> dict[str, Any] | None:
+def parse_record(line: bytes) -> dict[str, Any] | None:
+    """One line of a transcript as a dict, or None for a line that is not one."""
     try:
         record = json.loads(line)
     except ValueError:
@@ -219,7 +220,7 @@ def _read_head(
             if not raw.strip():
                 continue
             lines += 1
-            record = _parse(raw)
+            record = parse_record(raw)
             if record is not None:
                 parsed += 1
                 seen_meta = _take_meta(record, fields) or seen_meta
@@ -255,7 +256,7 @@ def _read_tail(transcript: Path, settings: Settings, fields: CheapFields) -> Non
         for raw in reversed(lines):
             if not raw.strip():
                 continue
-            record = _parse(raw)
+            record = parse_record(raw)
             if record is None:
                 continue
             kind = record.get("type")
@@ -312,7 +313,7 @@ def inherited_bytes(transcript: Path, session_id: str) -> int:
     try:
         with open(transcript, "rb") as handle:
             for raw in handle:
-                record = _parse(raw)
+                record = parse_record(raw)
                 if record is not None and _is_foreign(record, session_id):
                     total += len(raw)
     except OSError:

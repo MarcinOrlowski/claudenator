@@ -77,6 +77,12 @@ class Settings:
     # The state column: [L]ive, [F]ork, [D]amaged.
     state_marks: str = "LFD"
     state_off: str = "-"
+    # A number from a deep scan whose transcript changed since carries this
+    # mark in front: ``*12``. In front, so a column of numbers stays aligned.
+    # The old number stays on view until the next scan.
+    stale_mark: str = "*"
+    # The same, in words, where there is room: the details and ``info``.
+    stale_label: str = "(outdated)"
 
     # Reading transcripts. See ``scan.read_cheap`` for what these bound.
     head_records: int = 500

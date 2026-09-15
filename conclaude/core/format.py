@@ -14,9 +14,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from conclaude.core.model import Session, SessionDetails, TrashEntry
+from conclaude.core.model import Figures, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 
 TIME_FORMATS = ("absolute", "relative", "both")
@@ -62,13 +62,8 @@ class Formatter:
     def absolute(self, moment: datetime) -> str:
         return moment.astimezone().strftime(self.settings.time_pattern)
 
-    def relative(self, moment: datetime) -> str:
-        """Past stamps go : ``3d 23h ago``, ``45s ago``, ``just now``, future
-        ``in 3m``. The largest unit is shown, and the one below when it is not zero.
-        """
-        seconds = int((self.now() - moment).total_seconds())
-        future = seconds < 0
-        seconds = abs(seconds)
+    def span(self, seconds: int) -> str:
+        """A length of time in its two largest units: ``3d 23h``, ``45s``. Zero is ``0s``."""
         for index, (name, size) in enumerate(UNITS):
             if seconds < size:
                 continue
@@ -79,8 +74,28 @@ class Formatter:
                 next_count = rest // next_size
                 if next_count:
                     text = f"{text} {next_count}{next_name}"
-            return f"in {text}" if future else f"{text} ago"
-        return "just now"
+            return text
+        return "0s"
+
+    def relative(self, moment: datetime) -> str:
+        """Past stamps go : ``3d 23h ago``, ``45s ago``, ``just now``, future
+        ``in 3m``. The largest unit is shown, and the one below when it is not zero.
+        """
+        seconds = int((self.now() - moment).total_seconds())
+        if seconds == 0:
+            return "just now"
+        text = self.span(abs(seconds))
+        return f"in {text}" if seconds < 0 else f"{text} ago"
+
+    def duration(self, length: timedelta | None) -> str:
+        """A length of time, or ``-`` when there is none."""
+        if length is None:
+            return "-"
+        return self.span(int(length.total_seconds()))
+
+    def count(self, value: int) -> str:
+        """A whole number with a separator every three digits: ``1,234,567``."""
+        return f"{value:,}"
 
     def timestamp(self, moment: datetime | None) -> str:
         """Formats stamp or returns ``-`` when there is none."""
@@ -219,6 +234,59 @@ class Formatter:
             )
         lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
         lines.append(("Damaged", "yes" if session.damaged else "no"))
+        lines += self.describe_figures(details.figures)
+        return lines
+
+    def stale(self, text: str, figures: Figures) -> str:
+        """``text`` with the stale mark in front when the figures are stale: ``*12``.
+
+        In front, so a right-aligned column of numbers keeps its digits in line.
+        """
+        return f"{self.settings.stale_mark}{text}" if figures.stale else text
+
+    def outdated(self, text: str, figures: Figures) -> str:
+        """``text`` with the stale label in front when the figures are stale.
+
+        For the details, where there is room for a word: ``(outdated) 12``.
+        """
+        return f"{self.settings.stale_label} {text}" if figures.stale else text
+
+    def describe_figures(self, figures: Figures | None) -> list[tuple[str, str]]:
+        """The deep-scan figures as label and value pairs, in reading order.
+
+        With no figures there is one line, and it names the command to run.
+        Stale figures carry the stale label on every value, and the last line
+        says why.
+        """
+        if figures is None:
+            return [("Deep scan", "none  (run 'conclaude scan')")]
+        models = ", ".join(f"{name} ({count})" for name, count in figures.models)
+        tools = ", ".join(f"{name} {count}" for name, count in figures.tools)
+        tokens = (
+            f"{self.count(figures.tokens)}  "
+            f"({self.count(figures.input_tokens)} in, "
+            f"{self.count(figures.output_tokens)} out)"
+        )
+        cached = (
+            f"{self.count(figures.cache_read_tokens)} read, "
+            f"{self.count(figures.cache_write_tokens)} written"
+        )
+        calls = self.count(figures.tool_calls)
+        lines = [
+            ("Turns", self.outdated(self.count(figures.turns), figures)),
+            ("Tokens", self.outdated(tokens, figures)),
+            ("Cache tokens", self.outdated(cached, figures)),
+            ("Models", self.outdated(models or "-", figures)),
+            ("Duration", self.outdated(self.duration(figures.duration), figures)),
+            (
+                "Tool calls",
+                self.outdated(f"{calls}  ({tools})" if tools else calls, figures),
+            ),
+        ]
+        scanned = self.timestamp(figures.scanned_at)
+        if figures.stale:
+            scanned += "  (the transcript changed since; run 'conclaude scan')"
+        lines.append(("Scanned", scanned))
         return lines
 
     def counted(self, name: str, count: int) -> str:
