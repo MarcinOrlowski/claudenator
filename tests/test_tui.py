@@ -443,7 +443,7 @@ async def test_the_columns_hold_state_title_last_used_size_and_an_empty_turn_cou
     assert cells == [
         "---",
         "Hello",
-        fmt.timestamp(session.last_used),
+        fmt.list_timestamp(session.last_used),
         fmt.size(session.size),
         "",
     ]
@@ -559,7 +559,7 @@ async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_no
     assert re.search(rf"^Created: +{both}$", text, re.M)
     assert re.search(rf"^Last used: +{both}$", text, re.M)
     assert re.fullmatch(r"just now|[\dymdhs ]+ ago", cell)
-    assert settings.time_format == "relative"
+    assert settings.list_time_format == "relative"
 
 
 async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
@@ -1416,7 +1416,12 @@ async def test_the_trash_lists_its_entries_newest_first_grouped_by_day(
         [e_a1.id, e_a2.id, e_b1.id],
         None,
     )
-    assert cells == ["A1", fmt.timestamp(e_a1.trashed_at), fmt.size(e_a1.size), "/p/a"]
+    assert cells == [
+        "A1",
+        fmt.list_timestamp(e_a1.trashed_at),
+        fmt.size(e_a1.size),
+        "/p/a",
+    ]
     assert later == (DaysPane, day_later, [e_a1.id, e_a2.id])
     assert earlier == (day_earlier, [e_b1.id])
     assert entered is EntriesPane

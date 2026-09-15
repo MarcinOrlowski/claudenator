@@ -53,7 +53,7 @@ class Formatter:
     """Helper to format values in human friendly form."""
 
     def __init__(self, settings: Settings, now: datetime | None = None) -> None:
-        for name in ("time_format", "details_time_format"):
+        for name in ("list_time_format", "details_time_format"):
             value = getattr(settings, name)
             if value not in TIME_FORMATS:
                 allowed = ", ".join(TIME_FORMATS)
@@ -102,27 +102,34 @@ class Formatter:
         """A whole number with a separator every three digits: ``1,234,567``."""
         return f"{value:,}"
 
-    def timestamp(self, moment: datetime | None, form: str = "") -> str:
-        """Formats stamp or returns ``-`` when there is none.
+    def timestamp(self, moment: datetime | None, form: str) -> str:
+        """Formats stamp in ``form``, or returns ``-`` when there is none.
 
-        ``form`` is ``absolute``, ``relative`` or ``both``. With no ``form`` the
-        settings say which one, through ``time_format``.
+        ``form`` is ``absolute``, ``relative`` or ``both``. Nobody calls this
+        one with a form of their own: where the time goes decides it, so they
+        call ``list_timestamp`` or ``details_timestamp``.
         """
         if moment is None:
             return "-"
-        form = form or self.settings.time_format
         if form == "relative":
             return self.relative(moment)
         if form == "both":
             return f"{self.absolute(moment)} ({self.relative(moment)})"
         return self.absolute(moment)
 
+    def list_timestamp(self, moment: datetime | None) -> str:
+        """A stamp for a list, where a column holds it and the room is short.
+
+        The settings say which form, through ``list_time_format``. It is one
+        form only, because a column has no room for two.
+        """
+        return self.timestamp(moment, self.settings.list_time_format)
+
     def details_timestamp(self, moment: datetime | None) -> str:
         """A stamp for the details, where one thing at a time has the room for all of it.
 
         The settings say which form, through ``details_time_format``: both the
-        exact moment and how long ago it was. A column stays short and keeps
-        ``time_format``.
+        exact moment and how long ago it was.
         """
         return self.timestamp(moment, self.settings.details_time_format)
 

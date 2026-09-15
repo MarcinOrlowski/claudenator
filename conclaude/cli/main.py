@@ -114,7 +114,7 @@ def cmd_list(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> i
         (
             session.id[:8],
             fmt.marks(session),
-            fmt.timestamp(session.last_used),
+            fmt.list_timestamp(session.last_used),
             fmt.size(session.size),
             short_title(session),
             session.project_path,
