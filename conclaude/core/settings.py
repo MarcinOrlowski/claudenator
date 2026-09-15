@@ -67,8 +67,12 @@ class Settings:
     min_height: int = 12
     confirm_delete: bool = False
 
-    # How to format dates. See ``format.Formatter``.
-    time_format: str = "relative"
+    # How to format dates. See ``format.Formatter``. Where the time goes decides
+    # the form. A list holds it in a column, where the room is short, so it
+    # carries one form. The details name one thing at a time and have the room
+    # for all of it, so they carry both: the moment, and how long ago it was.
+    list_time_format: str = "relative"
+    details_time_format: str = "both"
     time_pattern: str = "%Y-%m-%d %H:%M:%S"
     # A calendar day, for grouping Trash entries
     day_pattern: str = "%Y-%m-%d"

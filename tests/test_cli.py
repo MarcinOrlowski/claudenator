@@ -447,7 +447,10 @@ def test_info_shows_the_figures_after_a_scan_and_marks_them_when_stale(
     assert "Cache tokens: 300 read, 40 written\n" in after
     assert "Models:       claude-opus-5 (2)\n" in after
     assert "Tool calls:   2  (Bash 1, Edit 1)\n" in after
-    assert re.search(r"Scanned:      (just now|\d+s ago)\n", after)
+    # The details always name the moment and how long ago it was.
+    assert re.search(
+        r"Scanned:      \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \((just now|\d+s ago)\)\n", after
+    )
     assert code == 0
     assert "Turns:        (outdated) 1\n" in stale
     assert "Tokens:       (outdated) 370  (10 in, 20 out)\n" in stale

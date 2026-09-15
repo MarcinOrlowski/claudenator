@@ -711,7 +711,7 @@ class SessionsPane(Table):
         """How wide the Title and Project columns can be with the room on hand."""
         labels = self._labels()
         padding = 2 * self.cell_padding
-        times = [len(self.fmt.timestamp(s.last_used)) for s in self._sessions]
+        times = [len(self.fmt.list_timestamp(s.last_used)) for s in self._sessions]
         sizes = [len(self.fmt.size(s.size)) for s in self._sessions]
         turns = [len(self._turns(s)) for s in self._sessions]
         fixed = (
@@ -746,7 +746,7 @@ class SessionsPane(Table):
                     no_wrap=True,
                     overflow="ellipsis",
                 ),
-                self.fmt.timestamp(session.last_used),
+                self.fmt.list_timestamp(session.last_used),
                 Text(self.fmt.size(session.size), justify="right"),
                 Text(self._turns(session), justify="right"),
             ]
@@ -859,7 +859,7 @@ class EntriesPane(Table):
     def _fit(self) -> tuple[int, int]:
         """How wide the Title and Project columns can be with the room on hand."""
         padding = 2 * self.cell_padding
-        times = [len(self.fmt.timestamp(e.trashed_at)) for e in self._entries]
+        times = [len(self.fmt.list_timestamp(e.trashed_at)) for e in self._entries]
         sizes = [len(self.fmt.size(e.size)) for e in self._entries]
         fixed = (
             max([len(ENTRY_COLUMNS["trashed_at"]), *times])
@@ -886,7 +886,7 @@ class EntriesPane(Table):
                     no_wrap=True,
                     overflow="ellipsis",
                 ),
-                self.fmt.timestamp(entry.trashed_at),
+                self.fmt.list_timestamp(entry.trashed_at),
                 Text(self.fmt.size(entry.size), justify="right"),
                 Text(
                     self.fmt.path(entry.project_path, project_width),

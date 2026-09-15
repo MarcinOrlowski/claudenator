@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from conclaude.core.format import Formatter
+from conclaude.core.format import TIME_FORMATS, Formatter
 from conclaude.core.model import Figures, Part, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 
@@ -35,8 +35,8 @@ def ago(**delta: int) -> datetime:
 
 def test_absolute_shows_local_time_to_the_second() -> None:
     """Absolute shows local time to the second."""
-    settings = Settings(time_format="absolute")
-    text = Formatter(settings, now=NOW).timestamp(ago(seconds=5))
+    settings = Settings(list_time_format="absolute")
+    text = Formatter(settings, now=NOW).list_timestamp(ago(seconds=5))
 
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", text)
     assert text == ago(seconds=5).astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -44,9 +44,9 @@ def test_absolute_shows_local_time_to_the_second() -> None:
 
 def test_absolute_pattern_comes_from_the_settings() -> None:
     """Absolute pattern comes from the settings."""
-    settings = Settings(time_format="absolute", time_pattern="%Y-%m-%dT%H:%M:%S")
+    settings = Settings(list_time_format="absolute", time_pattern="%Y-%m-%dT%H:%M:%S")
 
-    assert "T" in Formatter(settings, now=NOW).timestamp(NOW)
+    assert "T" in Formatter(settings, now=NOW).list_timestamp(NOW)
 
 
 @pytest.mark.parametrize(
@@ -65,23 +65,25 @@ def test_absolute_pattern_comes_from_the_settings() -> None:
 )
 def test_relative_shows_the_two_largest_units(moment: datetime, expected: str) -> None:
     """Relative shows the two largest units."""
-    settings = Settings(time_format="relative")
+    settings = Settings(list_time_format="relative")
 
-    assert Formatter(settings, now=NOW).timestamp(moment) == expected
+    assert Formatter(settings, now=NOW).list_timestamp(moment) == expected
 
 
 def test_both_shows_absolute_then_relative() -> None:
     """Both shows absolute then relative."""
-    settings = Settings(time_format="both")
+    settings = Settings(list_time_format="both")
     formatter = Formatter(settings, now=NOW)
     moment = ago(days=3, hours=23)
 
-    assert formatter.timestamp(moment) == f"{formatter.absolute(moment)} (3d 23h ago)"
+    assert (
+        formatter.list_timestamp(moment) == f"{formatter.absolute(moment)} (3d 23h ago)"
+    )
 
 
 def test_a_missing_moment_is_a_dash() -> None:
     """A missing moment is a dash."""
-    assert Formatter(Settings()).timestamp(None) == "-"
+    assert Formatter(Settings()).list_timestamp(None) == "-"
 
 
 def test_a_duration_shows_its_two_largest_units_and_a_missing_one_is_a_dash() -> None:
@@ -105,17 +107,37 @@ def test_a_count_carries_a_separator_every_three_digits() -> None:
     assert fmt.count(83321309) == "83,321,309"
 
 
+def test_the_details_hold_the_moment_and_how_long_ago_whatever_a_column_holds() -> None:
+    """A column is short and follows ``list_time_format``. The details have room for both.
+
+    ``details_time_format`` names the form the details take, and ``both`` is the default.
+    """
+    moment = ago(days=3, hours=23)
+    seen = [
+        Formatter(Settings(list_time_format=name), now=NOW).details_timestamp(moment)
+        for name in TIME_FORMATS
+    ]
+    own = Formatter(Settings(details_time_format="relative"), now=NOW)
+
+    assert seen == [f"{own.absolute(moment)} (3d 23h ago)"] * 3
+    assert own.details_timestamp(moment) == "3d 23h ago"
+    assert own.details_timestamp(None) == "-"
+    assert Settings().details_time_format == "both"
+
+
 def test_an_unknown_time_format_is_refused() -> None:
-    """An unknown time format is refused."""
+    """An unknown time format is refused, for a column and for the details."""
     with pytest.raises(ValueError, match="time_format must be one of"):
-        Formatter(Settings(time_format="fancy"))
+        Formatter(Settings(list_time_format="fancy"))
+    with pytest.raises(ValueError, match="details_time_format must be one of"):
+        Formatter(Settings(details_time_format="fancy"))
 
 
 def test_now_is_live_unless_fixed() -> None:
     """Now is live unless fixed."""
-    formatter = Formatter(Settings(time_format="relative"))
+    formatter = Formatter(Settings(list_time_format="relative"))
 
-    assert formatter.timestamp(datetime.now(timezone.utc)) == "just now"
+    assert formatter.list_timestamp(datetime.now(timezone.utc)) == "just now"
 
 
 def test_size() -> None:
@@ -354,7 +376,7 @@ def test_describe_figures_names_every_number_in_full() -> None:
         ("Models", "claude-opus-5 (30), claude-fable-5-1 (4)"),
         ("Duration", "2h"),
         ("Tool calls", "25  (Bash 20, Edit 5)"),
-        ("Scanned", "1h ago"),
+        ("Scanned", f"{fmt.absolute(ago(hours=1))} (1h ago)"),
     ]
 
 
@@ -419,7 +441,8 @@ def test_stale_figures_carry_the_label_on_every_value_and_say_why() -> None:
     assert lines["Duration"] == "(outdated) 2h"
     assert lines["Tool calls"] == "(outdated) 25  (Bash 20, Edit 5)"
     assert lines["Scanned"] == (
-        "1h ago  (the transcript changed since; run 'conclaude scan')"
+        f"{fmt.absolute(ago(hours=1))} (1h ago)"
+        "  (the transcript changed since; run 'conclaude scan')"
     )
     assert marked["Turns"] == "OLD 12"
     assert fmt.stale("12", figures(stale=True)) == "*12"
@@ -484,7 +507,7 @@ def test_trash_key_carries_the_count_and_nothing_when_the_trash_is_empty() -> No
 
 def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -> None:
     """Describe entry names the session, the moment, the size and every part with its place."""
-    fmt = Formatter(Settings(time_format="absolute"), now=NOW)
+    fmt = Formatter(Settings(list_time_format="absolute"), now=NOW)
     parts = (
         Part("transcript", Path("/c/projects/p/s.jsonl"), Path("claude/x"), False, 100),
         Part("sidecar", Path("/c/projects/p/s"), Path("claude/y"), True, 2048),
@@ -496,7 +519,8 @@ def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -
         ("Session", "s"),
         ("Title", "Hello"),
         ("Project", "/home/u/p"),
-        ("Trashed", fmt.timestamp(NOW)),
+        # The details hold both forms, whatever a column shows.
+        ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
         ("Reason", "-"),
         ("Size", "2.1K"),
         ("Entry", "/t/2026-09-14T12-00-00_s"),
