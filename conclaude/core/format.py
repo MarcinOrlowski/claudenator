@@ -44,6 +44,11 @@ def plural(noun: str) -> str:
     return noun + "s"
 
 
+def plural_of(noun: str, count: int) -> str:
+    """``noun`` in the number that fits ``count``: ``1 turn``, ``2 turns``, ``0 turns``."""
+    return noun if count == 1 else plural(noun)
+
+
 class Formatter:
     """Helper to format values in human friendly form."""
 
@@ -288,6 +293,24 @@ class Formatter:
             scanned += "  (the transcript changed since; run 'conclaude scan')"
         lines.append(("Scanned", scanned))
         return lines
+
+    def figures_line(self, figures: Figures) -> str:
+        """The figures of one session in one line, for a notification.
+
+        The headline numbers alone: ``44 turns, 1,234 tokens, 12 tool calls``.
+        """
+        counted = (
+            (figures.turns, "turn"),
+            (figures.tokens, "token"),
+            (figures.tool_calls, "tool call"),
+        )
+        return ", ".join(
+            f"{self.count(value)} {plural_of(noun, value)}" for value, noun in counted
+        )
+
+    def scan_summary(self, read: int, kept: int, failed: int) -> str:
+        """What a run of deep scans did: ``2 scanned, 1 already fresh, 0 failed``."""
+        return f"{read} scanned, {kept} already fresh, {failed} failed"
 
     def counted(self, name: str, count: int) -> str:
         """A pane title with the count of what it shows: ``Projects (3)``, or ``(empty)``."""

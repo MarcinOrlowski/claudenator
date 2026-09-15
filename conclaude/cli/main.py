@@ -20,7 +20,7 @@ from pathlib import Path
 
 from conclaude import __version__
 from conclaude.core.errors import ConclaudeError
-from conclaude.core.format import Formatter, plural
+from conclaude.core.format import Formatter, plural_of
 from conclaude.core.model import Session
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
@@ -34,11 +34,6 @@ def short_title(session: Session) -> str:
     if len(text) > TITLE_WIDTH:
         text = text[: TITLE_WIDTH - 3].rstrip() + "…"
     return text
-
-
-def plural_of(noun: str, count: int) -> str:
-    """``noun`` in the number that fits ``count``: ``1 turn``, ``2 turns``, ``0 turns``."""
-    return noun if count == 1 else plural(noun)
 
 
 def open_screen(settings: Settings) -> int:
@@ -158,28 +153,26 @@ def cmd_scan(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> i
         print(f"No sessions found under {store.settings.claude_dir}")
         return 0
     read = kept = failed = 0
-    for session in sessions:
-        before = store.figures_of(session)
-        fresh = before is not None and not before.stale and not args.force
-        try:
-            figures = store.scan_of(session, force=args.force)
-        except ConclaudeError as error:
+    for result in store.scan_many(sessions, force=args.force):
+        short = result.session.id[:8]
+        if result.error is not None or result.figures is None:
             failed += 1
-            print(f"{session.id[:8]}  {error}", file=sys.stderr)
+            print(f"{short}  {result.error}", file=sys.stderr)
             continue
-        if fresh:
+        figures = result.figures
+        if result.fresh:
             kept += 1
         else:
             read += 1
         turns = f"{fmt.count(figures.turns)} {plural_of('turn', figures.turns)}"
         tokens = f"{fmt.count(figures.tokens)} {plural_of('token', figures.tokens)}"
         length = fmt.duration(figures.duration)
-        state = "cached" if fresh else "scanned"
-        print(f"{session.id[:8]}  {turns}  {tokens}  {length}  {state}")
+        state = "cached" if result.fresh else "scanned"
+        print(f"{short}  {turns}  {tokens}  {length}  {state}")
     dropped = store.cache.forget_missing()
     print()
     print(
-        f"{read} scanned, {kept} already fresh, {failed} failed, "
+        f"{fmt.scan_summary(read, kept, failed)}, "
         f"{dropped} gone from the disk and forgotten"
     )
     print(f"Cache: {store.settings.cache_file}")

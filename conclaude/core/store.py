@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
@@ -22,6 +24,7 @@ from conclaude.core.cache import Cache
 from conclaude.core.errors import (
     AmbiguousSessionId,
     AmbiguousTrashEntry,
+    ConclaudeError,
     ScanFailed,
     SessionNotFound,
     TrashEntryNotFound,
@@ -51,6 +54,16 @@ from conclaude.core.trash import (
 
 # The columns a session list can be ordered by.
 SORT_COLUMNS = ("state", "title", "last_used", "created", "size", "msgs", "project")
+
+
+@dataclass(frozen=True)
+class ScanResult:
+    """Result of deep scan."""
+
+    session: Session
+    figures: Figures | None = None
+    fresh: bool = False
+    error: ConclaudeError | None = None
 
 
 def sort_key(
@@ -207,6 +220,22 @@ class SessionStore:
             raise ScanFailed(session.id, session.transcript_path, error) from error
         self.cache.put(figures)
         return figures
+
+    def scan_many(
+        self, sessions: list[Session], force: bool = False
+    ) -> Iterator[ScanResult]:
+        """Deep-scan these sessions."""
+        for session in sessions:
+            found = self.figures_of(session)
+            if found is not None and not found.stale and not force:
+                yield ScanResult(session, found, fresh=True)
+                continue
+            try:
+                figures = self.scan_of(session, force=True)
+            except ConclaudeError as error:
+                yield ScanResult(session, error=error)
+                continue
+            yield ScanResult(session, figures)
 
     def trash(self, wanted: str, reason: str | None = None) -> TrashEntry:
         """Move a session to the Trash, by its id or a unique prefix of it.

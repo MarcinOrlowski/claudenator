@@ -13,21 +13,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Callable
 
+import pytest
 from qrcat import render_qr
 from textual.color import Color, ColorParseError
 from textual.containers import VerticalScroll
 from textual.geometry import Region
+from textual.pilot import Pilot
 from textual.theme import BUILTIN_THEMES
 from textual.widgets import DataTable, Static
 
+import conclaude.core.store
 import conclaude.tui.app
 from conclaude import __author__, __description__, __title__, __url__, __version__
+from conclaude.core.cache import Cache
 from conclaude.core.format import Formatter
-from conclaude.core.model import TrashEntry
+from conclaude.core.model import Figures, TrashEntry
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
 from conclaude.core.trash import trash_session
@@ -53,6 +60,7 @@ from tests.fabricate import (
     FakeClaude,
     FakeProc,
     dump_line,
+    encode_project,
     new_id,
     prompt_record,
     session_records,
@@ -2259,3 +2267,318 @@ async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one
     assert stale == {quiet: "1", busy: "*2", unscanned: ""}
     assert by_msgs == ([busy, quiet, unscanned], ("msgs", True))
     assert reversed_msgs == ([unscanned, quiet, busy], ("msgs", False))
+
+
+async def until(check: Callable[[], bool], pilot: Pilot[None]) -> bool:
+    """Give the screen its turns until ``check`` holds. Gives up after a second."""
+    for _ in range(100):
+        await pilot.pause()
+        if check():
+            return True
+        await asyncio.sleep(0.01)
+    return False
+
+
+def gated_scan(
+    monkeypatch: pytest.MonkeyPatch, gate: threading.Event, hold: int
+) -> list[Path]:
+    """Make the deep scan wait on ``gate`` at its ``hold``-th transcript."""
+    real = conclaude.core.store.deep_scan
+    seen: list[Path] = []
+
+    def held(path: Path, now: datetime | None = None) -> Figures:
+        """One transcript, read after the gate opens when it is the one held."""
+        seen.append(path)
+        if len(seen) == hold:
+            gate.wait(5)
+        return real(path, now)
+
+    monkeypatch.setattr(conclaude.core.store, "deep_scan", held)
+    return seen
+
+
+async def test_s_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 's' key reads one transcript in full and leaves the panes where they are.
+
+    The Msgs cell of that row fills in, the details pane takes the figures, and
+    a notification says what was counted. The figures need no screen of their
+    own: the details pane already holds every one of them.
+    """
+    a1, _a2, _b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab")
+        await pilot.pause()
+        key = shown_keys(app).get("s")
+        blank = str(table.get_cell(a1, "msgs"))
+        await pilot.press("s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        where = type(app.screen), type(app.focused)
+        cell = str(table.get_cell(a1, "msgs"))
+        details = app.query_one(DetailsPane).text
+        shown = toasts(app)
+
+    assert key == "Scan"
+    assert blank == ""
+    assert where == (MainScreen, SessionsPane)
+    assert cell == "1"
+    assert re.search(r"^Turns: +1$", details, re.M)
+    assert re.search(r"^Tool calls: +0$", details, re.M)
+    assert shown == [("information", "Deep scan", "1 turn, 0 tokens, 0 tool calls")]
+
+
+async def test_s_takes_figures_already_in_the_cache_and_reads_no_transcript_again(
+    fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A result already cached shows at once. Nothing is computed a second time."""
+    a1, _a2, _b1 = three_sessions(fake)
+    store = SessionStore(settings)
+    store.scan_of(store.find_session(a1))
+    gate = threading.Event()
+    gate.set()
+    seen = gated_scan(monkeypatch, gate, hold=0)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("tab", "s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        cell = str(app.query_one(SessionsPane).get_cell(a1, "msgs"))
+        details = app.query_one(DetailsPane).text
+        shown = toasts(app)
+
+    assert seen == []
+    assert cell == "1"
+    assert re.search(r"^Turns: +1$", details, re.M)
+    assert shown == [("information", "Deep scan", "1 turn, 0 tokens, 0 tool calls")]
+
+
+async def test_capital_s_scans_every_session_listed_and_fills_the_msgs_column(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'S' key scans the sessions on view and leaves the others alone.
+
+    Every row on view fills in, and the count of what was done shows at the end.
+    """
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("down")
+        await pilot.pause()
+        listed = rows(table)
+        await pilot.press("tab")
+        await pilot.pause()
+        key = shown_keys(app).get("S")
+        await pilot.press("S")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        cells = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
+        shown = toasts(app)
+
+    assert key == "Scan all"
+    assert listed == [a1, a2]
+    assert cells == {a1: "1", a2: "1"}
+    assert shown == [
+        ("information", "Deep scan", "Reading 2 transcripts"),
+        ("information", "Deep scan", "2 scanned, 0 already fresh, 0 failed"),
+    ]
+    assert {path.stem for path in Cache(settings).get_all()} == {a1, a2}
+    assert b1 not in {a1, a2}
+
+
+async def test_the_screen_answers_keys_while_a_scan_runs_in_the_background(
+    fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A deep scan holds no key. The cursor still moves while a transcript is read."""
+    a1, a2, b1 = three_sessions(fake)
+    gate = threading.Event()
+    gated_scan(monkeypatch, gate, hold=1)
+    app = ConclaudeApp(settings)
+    try:
+        async with app.run_test(size=WIDE) as pilot:
+            await pilot.pause()
+            table = app.query_one(SessionsPane)
+            await pilot.press("tab", "S")
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            during = [str(table.get_cell(sid, "msgs")) for sid in rows(table)]
+            moved = table.selected_id
+            gate.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            after = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
+    finally:
+        gate.set()
+
+    assert during == ["", "", ""]
+    assert moved == a2
+    assert after == {a1: "1", a2: "1", b1: "1"}
+
+
+async def test_a_scan_cut_short_by_a_quit_leaves_the_cache_whole(
+    fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The user quits while a scan runs. Every session done by then is in the cache,
+    the cache still reads, and the session held mid-read is simply not in it.
+    """
+    a1, a2, _b1 = three_sessions(fake)
+    gate = threading.Event()
+    seen = gated_scan(monkeypatch, gate, hold=2)
+    app = ConclaudeApp(settings)
+    try:
+        async with app.run_test(size=WIDE) as pilot:
+            await pilot.pause()
+            await pilot.press("tab", "S")
+            held = await until(lambda: len(seen) == 2, pilot)
+            await pilot.press("q")
+            await pilot.pause()
+        kept = {
+            path.stem: found.turns for path, found in Cache(settings).get_all().items()
+        }
+        running = app.is_running
+    finally:
+        gate.set()
+
+    assert held is True
+    assert kept == {a1: 1}
+    assert seen[1].stem == a2
+    assert running is False
+
+
+async def test_a_row_never_moves_while_the_scan_runs_and_the_order_settles_at_the_end(
+    fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Msgs cells fill in where the rows stand, even when Msgs orders the rows.
+
+    A row that moved under the user's hand would be a trap, so the new order
+    comes once, when the scan ends.
+    """
+    mid, top, low = new_id(), new_id(), new_id()
+    for sid, prompts, mtime in ((mid, 1, 3000), (top, 2, 2000), (low, 0, 1000)):
+        records = session_records(sid, "/p/x", custom_title=sid[:4])
+        records += [prompt_record(sid, "More") for _ in range(prompts)]
+        fake.transcript("/p/x", sid, records, mtime=mtime)
+    gate = threading.Event()
+    seen = gated_scan(monkeypatch, gate, hold=3)
+    app = ConclaudeApp(settings)
+    try:
+        async with app.run_test(size=WIDE) as pilot:
+            await pilot.pause()
+            table = app.query_one(SessionsPane)
+            await pilot.press("tab", "o", "o")
+            await pilot.pause()
+            start = rows(table), table.sorting
+            await pilot.press("S")
+            held = await until(lambda: len(seen) == 3, pilot)
+            painted = await until(
+                lambda: str(table.get_cell(top, "msgs")) == "3", pilot
+            )
+            during = rows(table), [str(table.get_cell(s, "msgs")) for s in rows(table)]
+            gate.set()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            ended = rows(table), [str(table.get_cell(s, "msgs")) for s in rows(table)]
+            cursor = table.selected_id
+    finally:
+        gate.set()
+
+    assert start == ([mid, top, low], ("msgs", True))
+    assert (held, painted) == (True, True)
+    # The busiest session is on the middle row, and it stays there until the end
+    assert during == ([mid, top, low], ["2", "3", ""])
+    assert ended == ([top, mid, low], ["3", "2", "1"])
+    assert cursor == mid
+
+
+async def test_a_transcript_that_will_not_read_says_why_and_the_scan_walks_on(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """One session that fails stops itself alone. Its cell stays blank, the rest fill."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        (settings.projects_dir / encode_project("/p/a") / f"{a1}.jsonl").unlink()
+        await pilot.press("tab", "S")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        cells = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
+        shown = toasts(app)
+
+    assert cells == {a1: "", a2: "1", b1: "1"}
+    assert [severity for severity, _title, _message in shown] == [
+        "information",
+        "error",
+        "information",
+    ]
+    assert shown[1][1] == "Not scanned"
+    assert "could not read" in shown[1][2]
+    assert shown[2][2] == "2 scanned, 0 already fresh, 1 failed"
+
+
+async def test_a_scan_does_not_pull_the_list_from_under_the_cursor(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A scan changes numbers, not places.
+
+    The user scrolls down a long list and points at a row. The rows on view
+    stay on view, and the row under the cursor keeps its line on the screen.
+    """
+    for index in range(20):
+        sid = new_id()
+        fake.transcript("/p/x", sid, session_records(sid, "/p/x"), mtime=1000 + index)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=(120, 16)) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab")
+        # To the last row, so the list is scrolled to its end, then two rows up:
+        # the cursor now has two rows below it, on view.
+        await pilot.press(*["down"] * 19, "up", "up")
+        await pilot.pause()
+        before = table.scroll_offset.y, table.cursor_row
+        await pilot.press("s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        after = table.scroll_offset.y, table.cursor_row
+        cell = str(table.get_cell(table.selected_id or "", "msgs"))
+
+    assert before[0] > 0
+    assert after == before
+    assert cell == "1"
+
+
+async def test_a_change_of_width_keeps_the_rows_on_view_where_they_are(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The same rule holds for a resize: the row under the cursor keeps its line.
+
+    A resize rebuilds the table to refit the columns. That is the same clear
+    and refill a scan ends with, so the list must stay as still.
+    """
+    for index in range(20):
+        sid = new_id()
+        fake.transcript("/p/x", sid, session_records(sid, "/p/x"), mtime=1000 + index)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=(120, 16)) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        await pilot.press("tab")
+        await pilot.press(*["down"] * 19, "up", "up")
+        await pilot.pause()
+        before = table.scroll_offset.y, table.cursor_row, table.selected_id
+        await pilot.resize_terminal(130, 16)
+        await pilot.pause()
+        after = table.scroll_offset.y, table.cursor_row, table.selected_id
+
+    assert before[0] > 0
+    assert after == before

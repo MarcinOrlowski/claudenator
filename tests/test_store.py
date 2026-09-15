@@ -604,6 +604,33 @@ def test_a_scan_of_an_unreadable_transcript_names_the_file(
     assert caught.value.session_id == sid
 
 
+def test_scan_many_gives_one_result_per_session_and_carries_on_past_a_failure(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Every session gives one result, in the order it was given."""
+    cached, plain, gone = new_id(), new_id(), new_id()
+    fake.transcript(PROJECT, cached, session_records(cached, PROJECT), mtime=3000)
+    fake.transcript(PROJECT, plain, session_records(plain, PROJECT), mtime=2000)
+    lost = fake.transcript(PROJECT, gone, session_records(gone, PROJECT), mtime=1000)
+    store = SessionStore(settings)
+    sessions = store.list_sessions()
+    store.scan_of(store.find_session(cached))
+    lost.unlink()
+
+    results = list(store.scan_many(sessions))
+    forced = list(store.scan_many(sessions, force=True))
+
+    found = {result.session.id: result for result in results}
+    assert [result.session.id for result in results] == [cached, plain, gone]
+    assert found[cached].fresh is True
+    assert found[cached].figures is not None and found[cached].figures.turns == 1
+    assert found[plain].fresh is False
+    assert found[plain].figures is not None and found[plain].figures.turns == 1
+    assert found[gone].figures is None
+    assert isinstance(found[gone].error, ScanFailed)
+    assert [result.fresh for result in forced] == [False, False, False]
+
+
 def test_a_deep_scan_never_holds_the_whole_transcript(
     fake: FakeClaude, settings: Settings
 ) -> None:

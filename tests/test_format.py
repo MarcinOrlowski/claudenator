@@ -374,10 +374,37 @@ def test_describe_figures_with_nothing_counted_shows_dashes_not_blanks() -> None
     assert lines["Tool calls"] == "0"
 
 
+def test_figures_line_says_the_headline_numbers_in_one_line() -> None:
+    """The line a notification carries: the three numbers, each with its noun."""
+    fmt = Formatter(Settings(), now=NOW)
+
+    many = fmt.figures_line(figures())
+    one = fmt.figures_line(
+        figures(
+            turns=1,
+            input_tokens=1,
+            output_tokens=0,
+            cache_read_tokens=0,
+            cache_write_tokens=0,
+            tools=(("Bash", 1),),
+        )
+    )
+
+    assert many == "12 turns, 2,088,023 tokens, 25 tool calls"
+    assert one == "1 turn, 1 token, 1 tool call"
+
+
+def test_scan_summary_counts_what_a_run_of_scans_did() -> None:
+    """One wording for the screen and for the command line."""
+    fmt = Formatter(Settings(), now=NOW)
+
+    assert fmt.scan_summary(2, 1, 0) == "2 scanned, 1 already fresh, 0 failed"
+    assert fmt.scan_summary(0, 0, 3) == "0 scanned, 0 already fresh, 3 failed"
+
+
 def test_stale_figures_carry_the_label_on_every_value_and_say_why() -> None:
     """Old numbers stay on view. In the details each carries the stale label in
-    front, a word, and the last line says the transcript changed since. The
-    short mark is for a table cell. Both come from the settings.
+    front, a word, and the last line says the transcript changed since.
     """
     fmt = Formatter(Settings(), now=NOW)
     own = Formatter(Settings(stale_mark="?", stale_label="OLD"), now=NOW)
