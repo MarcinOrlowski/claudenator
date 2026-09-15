@@ -300,13 +300,34 @@ def entry(size: int, parts: tuple[Part, ...] = ()) -> TrashEntry:
     )
 
 
-def test_trash_line_counts_the_entries_and_sums_their_size() -> None:
-    """The Trash line counts the entries and sums their size."""
-    line = Formatter(Settings()).trash_line
+def test_a_counted_title_carries_the_count_or_says_empty() -> None:
+    """A counted title carries the count. Zero says empty instead."""
+    counted = Formatter(Settings()).counted
 
-    assert line([]) == "Trash: empty"
-    assert line([entry(1000)]) == "Trash: 1 entry, 1000B"
-    assert line([entry(1000), entry(2048)]) == "Trash: 2 entries, 3.0K"
+    assert counted("Projects", 0) == "Projects (empty)"
+    assert counted("Projects", 1) == "Projects (1)"
+    assert counted("Days", 12) == "Days (12)"
+
+
+def test_a_summary_title_counts_the_things_and_sums_their_size() -> None:
+    """A summary title counts the things, in the right plural, and sums their size."""
+    summary = Formatter(Settings()).summary
+
+    assert summary("Trash", "entry", []) == "Trash (empty)"
+    assert summary("Trash", "entry", [1000]) == "Trash (1 entry, 1000B total)"
+    assert summary("Trash", "entry", [1000, 2048]) == "Trash (2 entries, 3.0K total)"
+    assert (
+        summary("Sessions", "session", [1, 2, 3]) == "Sessions (3 sessions, 6B total)"
+    )
+
+
+def test_trash_key_carries_the_count_and_nothing_when_the_trash_is_empty() -> None:
+    """The Trash key carries the count. An empty Trash puts nothing after the word."""
+    key = Formatter(Settings()).trash_key
+
+    assert key([]) == "Trash"
+    assert key([entry(1000)]) == "Trash (1)"
+    assert key([entry(1000), entry(2048)]) == "Trash (2)"
 
 
 def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -> None:

@@ -4,6 +4,25 @@ Screen {
     layout: vertical;
 }
 
+/* The top line: the view on the left, the tool and its version on the right. */
+#title-bar {
+    height: 1;
+    background: $panel;
+    color: $foreground;
+}
+
+#view {
+    width: 1fr;
+    padding: 0 1;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#brand {
+    width: auto;
+    padding: 0 1;
+}
+
 #body {
     height: 1fr;
 }
