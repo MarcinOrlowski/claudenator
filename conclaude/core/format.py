@@ -298,7 +298,6 @@ class Formatter:
         """The figures of one session in one line, for a notification.
 
         The headline numbers alone: ``44 turns, 1,234 tokens, 12 tool calls``.
-        Every one of them, and more, is on the details pane at the same time.
         """
         counted = (
             (figures.turns, "turn"),

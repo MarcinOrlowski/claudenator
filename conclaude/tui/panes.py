@@ -471,14 +471,7 @@ class Table(Filterable, DataTable):
         )
 
     def _place_cursor(self, place: Place) -> None:
-        """After a rebuild, the cursor finds its row by key, or takes the row it was on.
-
-        The view goes with it: the row under the cursor keeps the line it was
-        drawn on. A rebuild clears the table, and a cleared table goes back to
-        the top, so without this the list would slide under the user's eyes.
-        A window that lost height holds fewer lines than the cursor had above
-        it, so the line is kept inside the room the pane has now.
-        """
+        """After a rebuild, the cursor finds its row by key, or takes the row it was on."""
         if self.row_count:
             index = place.index
             if place.key is not None and self.rows.get(place.key) is not None:
@@ -907,11 +900,7 @@ class EntriesPane(Table):
 
 
 class Lines(VerticalScroll):
-    """A lower right pane: one thing in full, as label and value lines.
-
-    A line never wraps. A value with no room for all of it is cut in the
-    middle: a path at its slashes, any other text by the character.
-    """
+    """A lower right pane: one thing in full, as label and value lines."""
 
     def __init__(self, id: str, title: str, fmt: Formatter, empty: str) -> None:
         super().__init__(id=id)
@@ -982,11 +971,7 @@ class EntryPane(Lines):
 
 
 class TooSmall(Static):
-    """The message that takes the place of the panes in a window with no room.
-
-    It says the smallest window that works, so the user knows what to do. The
-    numbers come from the settings object.
-    """
+    """The message that takes the place of the panes in a window with no room."""
 
     def __init__(self, width: int, height: int) -> None:
         super().__init__(
@@ -998,11 +983,7 @@ class TooSmall(Static):
 
 
 class TitleBar(Horizontal):
-    """The top line: the view on the left, the tool and its version on the right.
-
-    The view says where the user is, ``Sessions`` or ``Trash``. What the view
-    holds is on the panes, in their titles, not here.
-    """
+    """The top line."""
 
     BRAND = f"{__title__} v{__version__}"
 

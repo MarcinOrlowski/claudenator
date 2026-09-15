@@ -607,11 +607,7 @@ def test_a_scan_of_an_unreadable_transcript_names_the_file(
 def test_scan_many_gives_one_result_per_session_and_carries_on_past_a_failure(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Every session gives one result, in the order it was given.
-
-    Figures already fresh come back marked ``fresh``, with no second read. A
-    transcript that will not read gives its error and stops that session alone.
-    """
+    """Every session gives one result, in the order it was given."""
     cached, plain, gone = new_id(), new_id(), new_id()
     fake.transcript(PROJECT, cached, session_records(cached, PROJECT), mtime=3000)
     fake.transcript(PROJECT, plain, session_records(plain, PROJECT), mtime=2000)

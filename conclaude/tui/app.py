@@ -58,11 +58,7 @@ class TrashVisit:
 
 
 class ScanTook(Message):
-    """One session came back from the deep scan. Sent from the scan's own thread.
-
-    ``alone`` says the user asked for this one session, so its figures are
-    worth a word of their own.
-    """
+    """One session came back from the deep scan. Sent from the scan's own thread."""
 
     def __init__(self, result: ScanResult, alone: bool) -> None:
         super().__init__()
@@ -82,11 +78,7 @@ class ScanEnded(Message):
 
 
 class FullScreen(ModalScreen[None]):
-    """One session, or one Trash entry, in full over the whole window.
-
-    A small pane cuts a long line to fit. This box gives the same lines the
-    whole window. The arrow keys scroll it, and 'escape' closes it.
-    """
+    """One session, or one Trash entry."""
 
     BINDINGS = [
         Binding("escape", "close", "Close"),
@@ -313,14 +305,7 @@ class MainScreen(PaneScreen[None]):
 
     @work(thread=True, exclusive=True, group="scan")
     def _scan(self, sessions: list[Session], alone: bool = False) -> None:
-        """Read these transcripts in full, on a thread of its own.
-
-        The screen answers every key throughout, because this runs off the
-        screen's thread and sends each result back as a message. One deep scan
-        runs at a time: a new one takes the place of the one before it. A scan
-        cut short, by a quit or by the next scan, leaves the cache whole,
-        because every session is written on its own as it is done.
-        """
+        """Read these transcripts in full."""
         worker = get_current_worker()
         read = kept = failed = 0
         for result in self.store.scan_many(sessions):
@@ -362,11 +347,7 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
-        """The 'd' key: the session goes to the Trash and its row goes from the table.
-
-        Nothing reloads. A session that will not go, a live one for instance,
-        stays where it is and the reason shows in a notification.
-        """
+        """The 'd' key: the session goes to the Trash."""
         session = event.session
         try:
             entry = self.store.trash_of(session)
@@ -392,11 +373,7 @@ class MainScreen(PaneScreen[None]):
         self.query_one(ProjectsPane).show(projects_of(self._sessions))
 
     def _forget(self, session: Session) -> None:
-        """Take one session off the screen, in place.
-
-        When it was the last session of its project, the project goes from the
-        projects pane too, and the highlight there takes the line that replaced it.
-        """
+        """Take one session off the screen."""
         self._sessions = [s for s in self._sessions if s.id != session.id]
         self._by_id.pop(session.id, None)
         self._details.pop(session.id, None)

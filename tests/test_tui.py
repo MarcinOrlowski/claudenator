@@ -2282,11 +2282,7 @@ async def until(check: Callable[[], bool], pilot: Pilot[None]) -> bool:
 def gated_scan(
     monkeypatch: pytest.MonkeyPatch, gate: threading.Event, hold: int
 ) -> list[Path]:
-    """Make the deep scan wait on ``gate`` at its ``hold``-th transcript.
-
-    Every transcript it starts lands in the list it gives back, so a test can
-    tell how far the scan walked.
-    """
+    """Make the deep scan wait on ``gate`` at its ``hold``-th transcript."""
     real = conclaude.core.store.deep_scan
     seen: list[Path] = []
 

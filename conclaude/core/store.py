@@ -58,12 +58,7 @@ SORT_COLUMNS = ("state", "title", "last_used", "created", "size", "msgs", "proje
 
 @dataclass(frozen=True)
 class ScanResult:
-    """What a deep scan of one session gave: its figures, or why there are none.
-
-    ``fresh`` says the cache already held figures of this very transcript, so
-    nothing was read again. ``error`` carries the reason a scan failed, and
-    then there are no figures.
-    """
+    """Result of deep scan."""
 
     session: Session
     figures: Figures | None = None
@@ -229,14 +224,7 @@ class SessionStore:
     def scan_many(
         self, sessions: list[Session], force: bool = False
     ) -> Iterator[ScanResult]:
-        """Deep-scan these sessions, one by one, and give each result as it lands.
-
-        Figures already fresh in the cache come back untouched and marked
-        ``fresh``: that transcript is not read again. A transcript that will
-        not read gives its error, and the walk carries on with the session
-        after it. Every session is cached on its own, so a walk that stops
-        part way keeps what it has already done.
-        """
+        """Deep-scan these sessions."""
         for session in sessions:
             found = self.figures_of(session)
             if found is not None and not found.stale and not force:

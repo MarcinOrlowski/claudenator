@@ -404,8 +404,7 @@ def test_scan_summary_counts_what_a_run_of_scans_did() -> None:
 
 def test_stale_figures_carry_the_label_on_every_value_and_say_why() -> None:
     """Old numbers stay on view. In the details each carries the stale label in
-    front, a word, and the last line says the transcript changed since. The
-    short mark is for a table cell. Both come from the settings.
+    front, a word, and the last line says the transcript changed since.
     """
     fmt = Formatter(Settings(), now=NOW)
     own = Formatter(Settings(stale_mark="?", stale_label="OLD"), now=NOW)
