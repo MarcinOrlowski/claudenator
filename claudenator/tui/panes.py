@@ -35,35 +35,27 @@ from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, Project, Session, SessionDetails, TrashEntry
 from claudenator.core.store import sort_key
 
-# Every key has a home, by what it acts on: the tool keys go to the right of the
-# footer, the pane keys to the frame of the pane, the view key to the title bar,
-# and the keys of the row under the cursor to the left of the footer. Only the
-# last two groups carry ``show``, because only they are drawn by the footer.
-
 # The keys every pane uses
 SHARED_BINDINGS = [
     Binding("tab", "app.focus_next", "Next pane", show=False),
     Binding("shift+tab", "app.focus_previous", "Previous pane", show=False),
-    # The frame of the focused pane shows this key, so the footer does not.
+    # The frame of the focused pane shows this key
     Binding("r", "screen.reload", "Reload", show=False),
     Binding("f2", "app.settings", "Settings"),
-    # The title bar shows this key, so the footer keeps the room for the rest.
+    # The title bar shows this key
     Binding("question_mark", "app.about", "About", key_display="?", show=False),
     Binding("q", "app.quit", "Quit"),
 ]
 
-# The keys of the whole tool. The footer docks them at its right edge, away from
-# the keys of the pane. ``KeyBar`` takes them out of the left side by action.
+# The keys of the whole tool.
 TOOL_ACTIONS = ("app.settings", "app.quit")
 
-# The key of each view. The title bar names both views and marks the one on
-# screen, so the footer shows neither key. Each view binds the other one's key.
+# The key of each view.
 TO_TRASH = Binding("t", "screen.trash_mode", "Trash", show=False)
 TO_SESSIONS = Binding("s", "screen.sessions_mode", "Sessions", show=False)
 
 
-# The keys of a pane that can narrow its list to a typed text. The frame of the
-# focused pane shows them, so the footer does not.
+# The keys of a pane that can narrow its list to a typed text.
 FILTER_BINDINGS = [
     Binding("slash", "filter", "Filter", key_display="/", show=False),
     Binding("escape", "clear_filter", "Clear filter", show=False),
@@ -79,13 +71,13 @@ CLEAR_KEY = ("ESC", "Clear")
 # The gap between two keys on a frame.
 KEY_GAP = "  "
 
-# The colour of a key, wherever the tool writes one outside the footer. The
-# words beside it keep the plain colour, so the key alone catches the eye.
+# The color of a key, wherever the tool writes one outside the footer. The
+# words beside it keep the plain color
 KEY_STYLE = "$footer-key-foreground bold"
 
 # The keys of a pane that act on its rows, in the order the footer lists them:
 # first the keys that act on the row under the cursor, then the keys that change
-# the list. Every pane follows the same rule.
+# the list.
 PROJECTS_BINDINGS = [Binding("enter", "select", "Sessions", show=False)]
 DAYS_BINDINGS = [Binding("enter", "select", "Entries", show=False)]
 SESSIONS_BINDINGS = [
@@ -120,9 +112,7 @@ def key_line(keys: list[tuple[str, str]]) -> Content:
 class FrameKeys:
     """A pane that draws its own keys on the bottom edge of its frame.
 
-    These keys act on the pane, not on the row under the cursor and not on the
-    tool, so the footer lists none of them. A pane without the focus answers
-    none of them either, so it shows none.
+    These keys act on the pane, not on the row under the cursor.
     """
 
     def frame_keys(self) -> list[tuple[str, str]]:
@@ -196,15 +186,12 @@ ENTRY_COLUMNS = {
 }
 
 # A number or a time column sorts biggest value first when its column is chosen.
-# The state column goes with them, so the live sessions come to the top.
-# The other columns do alpha sort.
 BIGGEST_FIRST = {"state", "last_used", "size", "msgs"}
 
-# The mark on the label of the column that sorts the rows.
+# Sorting order mark
 SORT_MARK = {True: " ▼", False: " ▲"}
 
-# The colours a session row can take. The stylesheet gives each one a theme
-# variable, so all 20 themes fit. See ``state_class``.
+# The colors a session row can take. See ``state_class``.
 STATE_CLASSES = {"sessions--damaged", "sessions--live", "sessions--fork"}
 
 
@@ -298,11 +285,7 @@ class Filterable(FrameKeys):
 
 
 class FilterBox(Input):
-    """The line under a pane where the user types its filter.
-
-    Shown while the user types, and while a filter is in effect. 'enter'
-    goes back to the pane and keeps the filter. 'escape' drops it and goes back.
-    """
+    """The line under a pane where the user types its filter."""
 
     BINDINGS = [
         Binding("escape", "cancel", "Clear"),
@@ -350,7 +333,7 @@ class FilterBox(Input):
 class Lister(OptionList):
     """A left pane: one 'all' line, then one line per thing.
 
-    The highlight is held as an id, never as an index. Every subclass names
+    The highlight is held as an id, not by index. Every subclass names
     its own ``Chosen`` and ``Opened``, so a screen can tell the panes apart.
     """
 
@@ -362,7 +345,7 @@ class Lister(OptionList):
             self.key = key
 
     class Opened(Message):
-        """The user pressed 'enter' on a line: they want to work on what it holds."""
+        """The user pressed 'enter' on a line."""
 
     def __init__(self, id: str, title: str, fmt: Formatter) -> None:
         super().__init__(id=id)
@@ -1160,11 +1143,7 @@ class ViewWanted(Message):
 
 
 class ViewName(Static):
-    """One view by name in the title bar, with its key.
-
-    The name starts with the key that opens the view, in brackets. The view on
-    screen has a background as well, so the user sees which one is on view.
-    """
+    """One view by name in the title bar, with its key."""
 
     def __init__(self, name: str, current: bool) -> None:
         super().__init__(id=view_id(name), classes="view-name")
@@ -1187,11 +1166,10 @@ class TitleBar(Horizontal):
 
     BRAND = f"{__title__} v{__version__}"
 
-    # The 'about' key is the only key the footer does not list, so the title bar
-    # carries it instead, in the colour the footer gives a key of its own.
-    ABOUT_HINT = "(?)"
+    # The 'about'/'help' shortcut
+    ABOUT_HINT = "[?]"
 
-    # Every view by name, in the order the title bar shows them.
+    # Every main view by name
     VIEWS = ("Sessions", "Trash")
 
     def __init__(self, view: str) -> None:
@@ -1211,12 +1189,11 @@ class TitleBar(Horizontal):
 
 
 class KeyBar(Footer):
-    """The footer, in two parts by what a key acts on.
+    """The footer
 
-    The left side holds the keys of the pane that has the focus, in the order
-    the pane declares them: the row under the cursor first, then the list. The
-    right side holds the keys of the whole tool. The library docks its own
-    command-palette key the same way.
+    The left side holds the keys of the pane that has the focus - the row under
+    the cursor first, then the list. The right side holds the keys of the whole
+    tool.
     """
 
     def compose(self) -> ComposeResult:
@@ -1248,7 +1225,7 @@ class KeyBar(Footer):
         ).data_bind(compact=Footer.compact)
 
 
-# The 'enter' key of a left pane, in one line for both views.
+# The 'enter' key of a left pane.
 INTO_LIST = Binding("enter", "select", "Into its list", show=False)
 
 

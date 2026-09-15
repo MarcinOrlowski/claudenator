@@ -139,12 +139,7 @@ class PaneScreen(Screen[ScreenResultType]):
         return TooSmall(settings.min_width, settings.min_height)
 
     def _size_left(self, stacked: bool) -> None:
-        """Size the left pane from the settings, for the layout in effect.
-
-        Side by side, it takes a share of the width, between the two limits the
-        settings give. In one column, it takes the same share of the height,
-        never below the limit the settings give, and the full width.
-        """
+        """Size the left pane from the settings"""
         settings = self.store.settings
         share = f"{settings.projects_pane_share:.0%}"
         left = self.query_one("#left")
@@ -162,13 +157,9 @@ class PaneScreen(Screen[ScreenResultType]):
             left.styles.min_height = 0
 
     def _fit_window(self) -> None:
-        """Give the layout the shape the window has room for.
+        """Gives the layout the shape the window can fit.
 
-        A narrow window puts the panes in one column, one over the other, so
-        that every one of them keeps the full width. No pane ever goes out of
-        view on its own. Under the smallest window that works, a plain message
-        takes the place of them all. Every width comes from the settings
-        object, and no step is one way: the layout goes back as the window grows.
+        A narrow window puts the panes in one column, one over the other,
         """
         settings = self.store.settings
         width, height = self.size
@@ -185,9 +176,7 @@ class PaneScreen(Screen[ScreenResultType]):
         """Hold the focus on a pane through every change of size.
 
         A window with no room for the panes takes them out of view, and the
-        library drops the focus with them. The keys of the pane go too, and a
-        window that answers no key at all would trap the user. So the table
-        takes the focus back: it is the pane the user works in.
+        library drops the focus with them.
         """
         focused = self.focused
         if focused is not None and all(
@@ -259,12 +248,7 @@ class MainScreen(PaneScreen[None]):
         self._focus_start_pane()
 
     def _focus_start_pane(self) -> None:
-        """Give the focus to the pane the settings name.
-
-        The projects pane still opens on 'All projects', so the sessions pane
-        lists every session whichever pane holds the focus. A name the settings
-        do not know gives the sessions pane.
-        """
+        """Give the focus to the specific pane set in settings."""
         wanted = self.store.settings.start_pane
         pane = ProjectsPane if wanted == "projects" else SessionsPane
         self.query_one(pane).focus()
@@ -331,12 +315,7 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_scan_wanted(self, event: SessionsPane.ScanWanted) -> None:
-        """The 'c' key: deep-scan the session under the cursor.
-
-        Its row and its details take the figures, and a word says what was
-        counted. Figures already fresh in the cache are used as they are:
-        nothing is read twice.
-        """
+        """Deep-scan the session under the cursor."""
         self._scan([event.session], alone=True)
 
     def on_sessions_pane_scan_all_wanted(
@@ -577,14 +556,10 @@ class ClaudenatorApp(App[None]):
     TITLE = __title__
     CSS_PATH = "claudenator.tcss"
 
-    # Textual's own command box, on 'ctrl+p', is not part of this tool. Off, it
-    # takes its key and its footer entry with it.
+    # Disable Textual's own command palette
     ENABLE_COMMAND_PALETTE = False
 
-    # A key with a word for a name is written in capitals, so it never reads as
-    # a letter to press. A key that is one character keeps its own case, because
-    # there the case is the key. The library draws 'enter' as a glyph and writes
-    # the rest in lower case, so the tool names them itself.
+    # We want some keys to be spelled differently than Textual thinks.
     KEY_NAMES = {"enter": "ENTER", "escape": "ESC", "tab": "TAB", "f2": "F2"}
 
     def get_key_display(self, binding: Binding) -> str:

@@ -1063,8 +1063,7 @@ async def test_the_keys_on_a_frame_are_drawn_at_its_bottom_right(
 
     Every key takes the theme variable the footer gives its own keys, so a key
     reads the same in both places. The words beside it keep the plain colour of
-    text, so the key alone catches the eye. The title on the top edge is left
-    alone.
+    text.
     """
     three_sessions(fake)
     app = ClaudenatorApp(settings)
@@ -1090,10 +1089,7 @@ async def test_the_keys_on_a_frame_are_drawn_at_its_bottom_right(
 async def test_a_frame_too_narrow_for_its_keys_cuts_them_and_keeps_its_title(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """A frame with no room for all its keys cuts them, and says so with an ellipsis.
-
-    The title has the top edge to itself, so the keys never eat into it.
-    """
+    """A frame with no room for all its keys cuts them, and says so with an ellipsis."""
     three_sessions(fake)
     settings.projects_pane_share = 0.1
     settings.projects_pane_min_width = 20
@@ -1978,12 +1974,7 @@ def titles(app: ClaudenatorApp) -> tuple[str, str, str, str]:
 async def test_the_title_bar_names_both_views_on_the_left_and_the_tool_on_the_right(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The title bar names both views at the left edge, and the tool with its version at the right.
-
-    A view holds the whole screen, so its key belongs here and not in the
-    footer. The 'about' key comes last, after the version, because the footer
-    drops it too.
-    """
+    """The title bar names both views at the left edge"""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     end = f" {__title__} v{__version__} {TitleBar.ABOUT_HINT}"
@@ -2065,13 +2056,7 @@ async def test_the_view_on_screen_carries_a_background_of_its_own(
 async def test_every_view_name_carries_its_own_key_in_brackets(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """A view names the key that opens it, in brackets: ``[S]essions``.
-
-    The brackets say which key with no colour at all, so a screen with no colour
-    loses nothing. The key still takes the colour the footer gives a key. The
-    view on screen drops that colour: it has colours of its own, and the two
-    would fight.
-    """
+    """A view names the key that opens it, in brackets: ``[S]essions``."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -2098,11 +2083,7 @@ async def test_every_view_name_carries_its_own_key_in_brackets(
 async def test_a_key_with_a_word_for_a_name_is_written_in_capitals(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """``ENTER``, ``ESC``, ``TAB`` and ``F2`` are written in capitals everywhere.
-
-    A word in capitals never reads as a letter to press. A key that is one
-    character keeps its own case, because there the case is the key.
-    """
+    """``ENTER``, ``ESC``, ``TAB`` and ``F2`` are written in CAPS"""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -2126,10 +2107,7 @@ async def test_a_key_with_a_word_for_a_name_is_written_in_capitals(
 async def test_the_about_box_lists_every_key_the_tool_answers(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The footer and the pane frames show only some keys, so the About box has them all.
-
-    A key reads there the way it reads in the footer, so a new user loses no key.
-    """
+    """The footer and the pane frames show only some keys, so the About box has them all."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -2160,11 +2138,7 @@ async def test_the_about_box_lists_every_key_the_tool_answers(
 async def test_the_about_key_on_the_title_bar_takes_the_colour_of_a_footer_key(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 'about' key on the title bar is drawn like a key in the footer.
-
-    The colour is the theme variable the footer gives its own keys, so the key
-    reads the same in both places, and it follows the theme.
-    """
+    """The 'about' key on the title bar is drawn like a key in the footer."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -2513,11 +2487,7 @@ def column_width(table: DataTable, key: str) -> int:
 async def test_a_long_project_path_is_cut_in_the_middle_and_keeps_its_end(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """A long project path is cut in the middle, at the slashes, and keeps its end.
-
-    Two paths that differ in their last part alone stay apart. The id of the
-    line is still the whole path.
-    """
+    """A long project path is cut in the middle, at the slashes, and keeps its end."""
     [(one, _a), (two, _b)] = long_paths(fake, 2)
     fmt = Formatter(settings)
     app = ClaudenatorApp(settings)
@@ -2638,10 +2608,7 @@ TALE = (
 async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """A long title is cut in the middle, by the character, and its end stays.
-
-    The state marks take no room from the title: they have a column of their own.
-    """
+    """A long title is cut in the middle, by the character, and its end stays."""
     one, two = new_id(), new_id()
     fake.transcript(
         "/p/a",
@@ -2842,11 +2809,7 @@ async def test_the_about_key_works_on_every_pane_and_in_the_trash(
 async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wraps(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """A long line in the details pane is cut in the middle, at the slashes. It never wraps.
-
-    The end of a path stays, so the folder or the file name is always on view.
-    A wider window brings the whole line back.
-    """
+    """A long line in the details pane is cut at the slashes, im the middle"""
     sid = new_id()
     fake.transcript(LONG, sid, session_records(sid, LONG, custom_title="Hello"))
     fake.sidecar(LONG, sid, agents=3)

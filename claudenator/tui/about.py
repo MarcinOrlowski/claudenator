@@ -51,11 +51,7 @@ def about_text() -> str:
 
 
 def key_text(name_of: Callable[[Binding], str]) -> str:
-    """Every key of the tool, by group: the title, then one key to a line.
-
-    The footer lists only some of the keys, so this is where a new user finds
-    the rest. The keys line up in one column, so the box stays narrow.
-    """
+    """Every key of the tool"""
     groups = [
         (title, [(name_of(binding), binding.description) for binding in bindings])
         for title, bindings in key_help()
