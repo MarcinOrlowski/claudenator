@@ -14,17 +14,20 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, HorizontalGroup, VerticalScroll
 from textual.content import Content
 from textual.message import Message
-from textual.widget import Widget
-from textual.widgets import DataTable, Input, OptionList, Static
+from textual.widgets import DataTable, Footer, Input, OptionList, Static
+
+# One key of a footer. The library keeps the class private, and gives no other
+# way to draw a key the way its own footer draws one.
+from textual.widgets._footer import FooterKey
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
 from claudenator import __title__, __version__
@@ -32,43 +35,134 @@ from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, Project, Session, SessionDetails, TrashEntry
 from claudenator.core.store import sort_key
 
+# Every key has a home, by what it acts on: the tool keys go to the right of the
+# footer, the pane keys to the frame of the pane, the view key to the title bar,
+# and the keys of the row under the cursor to the left of the footer. Only the
+# last two groups carry ``show``, because only they are drawn by the footer.
+
 # The keys every pane uses
 SHARED_BINDINGS = [
-    Binding("tab", "app.focus_next", "Next pane"),
+    Binding("tab", "app.focus_next", "Next pane", show=False),
     Binding("shift+tab", "app.focus_previous", "Previous pane", show=False),
-    Binding("r", "screen.reload", "Reload"),
+    # The frame of the focused pane shows this key, so the footer does not.
+    Binding("r", "screen.reload", "Reload", show=False),
     Binding("f2", "app.settings", "Settings"),
     # The title bar shows this key, so the footer keeps the room for the rest.
     Binding("question_mark", "app.about", "About", key_display="?", show=False),
     Binding("q", "app.quit", "Quit"),
 ]
 
-# The key that switches between the sessions and the Trash view.
-TO_TRASH = Binding("t", "screen.trash_mode", "Trash")
-TO_SESSIONS = Binding("t", "screen.sessions_mode", "Sessions")
+# The keys of the whole tool. The footer docks them at its right edge, away from
+# the keys of the pane. ``KeyBar`` takes them out of the left side by action.
+TOOL_ACTIONS = ("app.settings", "app.quit")
+
+# The key of each view. The title bar names both views and marks the one on
+# screen, so the footer shows neither key. Each view binds the other one's key.
+TO_TRASH = Binding("t", "screen.trash_mode", "Trash", show=False)
+TO_SESSIONS = Binding("s", "screen.sessions_mode", "Sessions", show=False)
 
 
-def label_trash_key(screen: Widget, label: str) -> None:
-    """Put ``label`` on the key that opens the Trash, on every pane under ``screen``.
-
-    The footer takes a key's label from the binding map of the pane that has the
-    focus, and the library gives no public way to change a label once the pane
-    is up. So this puts a copy of the binding, with the new label, into the map
-    of every pane that has the key. ``refresh_bindings`` makes the footer redraw.
-    """
-    binding = replace(TO_TRASH, description=label)
-    for pane in screen.query(Widget):
-        bindings = pane._bindings.key_to_bindings
-        if any(b.action == TO_TRASH.action for b in bindings.get(TO_TRASH.key, ())):
-            bindings[TO_TRASH.key] = [binding]
-            pane.refresh_bindings()
-
-
-# The keys of a pane that can narrow its list to a typed text
+# The keys of a pane that can narrow its list to a typed text. The frame of the
+# focused pane shows them, so the footer does not.
 FILTER_BINDINGS = [
-    Binding("slash", "filter", "Filter", key_display="/"),
-    Binding("escape", "clear_filter", "Clear filter"),
+    Binding("slash", "filter", "Filter", key_display="/", show=False),
+    Binding("escape", "clear_filter", "Clear filter", show=False),
 ]
+
+# The keys a pane draws on its own frame, as ('key', 'what it does') pairs.
+RELOAD_KEY = ("r", "Reload")
+SORT_KEY = ("o", "Sort")
+REVERSE_KEY = ("O", "Reverse")
+FILTER_KEY = ("/", "Filter")
+CLEAR_KEY = ("ESC", "Clear")
+
+# The gap between two keys on a frame.
+KEY_GAP = "  "
+
+# The colour of a key, wherever the tool writes one outside the footer. The
+# words beside it keep the plain colour, so the key alone catches the eye.
+KEY_STYLE = "$footer-key-foreground bold"
+
+# The keys of a pane that act on its rows, in the order the footer lists them:
+# first the keys that act on the row under the cursor, then the keys that change
+# the list. Every pane follows the same rule.
+PROJECTS_BINDINGS = [Binding("enter", "select", "Sessions", show=False)]
+DAYS_BINDINGS = [Binding("enter", "select", "Entries", show=False)]
+SESSIONS_BINDINGS = [
+    Binding("enter", "open", "Details"),
+    Binding("d", "trash", "Delete"),
+    Binding("c", "scan", "Scan"),
+    Binding("C", "scan_all", "Scan all"),
+]
+# The order of the list belongs to the list, so these live on the pane frame.
+SORT_BINDINGS = [
+    Binding("o", "sort_next", "Sort", show=False),
+    Binding("O", "sort_reverse", "Reverse", show=False),
+]
+ENTRIES_BINDINGS = [
+    Binding("enter", "open", "Entry"),
+    Binding("u", "restore", "Restore"),
+    Binding("x", "purge", "Purge"),
+]
+
+
+def key_line(keys: list[tuple[str, str]]) -> Content:
+    """``keys`` as one line: every key in its colour, every word in plain text."""
+    parts: list[str | tuple[str, str]] = []
+    for key, what in keys:
+        if parts:
+            parts.append(KEY_GAP)
+        parts.append((key, KEY_STYLE))
+        parts.append(f" {what}")
+    return Content.assemble(*parts)
+
+
+class FrameKeys:
+    """A pane that draws its own keys on the bottom edge of its frame.
+
+    These keys act on the pane, not on the row under the cursor and not on the
+    tool, so the footer lists none of them. A pane without the focus answers
+    none of them either, so it shows none.
+    """
+
+    def frame_keys(self) -> list[tuple[str, str]]:
+        """The keys to draw, in one order: reload, then the list, then the filter."""
+        return [RELOAD_KEY, *self.list_keys(), *self.filter_keys()]
+
+    def list_keys(self) -> list[tuple[str, str]]:
+        """The keys that order the list. A pane that cannot order it has none."""
+        return []
+
+    def filter_keys(self) -> list[tuple[str, str]]:
+        """The keys that narrow the list. A pane that cannot narrow it has none."""
+        return []
+
+    @property
+    def frame_line(self) -> str:
+        """The keys on the frame in plain words, empty when the frame has none.
+
+        The library keeps the label it built out of reach, so this reads it from
+        where the library put it.
+        """
+        return str(self._border_subtitle or "")
+
+    def on_focus(self) -> None:
+        """The pane can answer its keys now, so the frame names them."""
+        self.border_subtitle = key_line(self.frame_keys())
+
+    def on_blur(self) -> None:
+        """The pane answers no key now, so the frame names none."""
+        self.border_subtitle = None
+
+    def paint_frame_keys(self) -> None:
+        """Write the keys again, for a change that adds one or takes one away.
+
+        The frame holds them only while the pane has the focus, and a pane that
+        does not have it keeps an empty frame.
+        """
+        if self._border_subtitle is not None:
+            self.border_subtitle = key_line(self.frame_keys())
+
 
 ALL_PROJECTS = "All projects"
 ALL_DAYS = "All days"
@@ -161,7 +255,7 @@ class FilterWanted(Message):
         self.clear = clear
 
 
-class Filterable:
+class Filterable(FrameKeys):
     """A pane that can narrow its list to the lines that hold a typed text."""
 
     _filter = ""
@@ -171,6 +265,10 @@ class Filterable:
         """The text in effect. Empty when the list is not narrowed."""
         return self._filter
 
+    def filter_keys(self) -> list[tuple[str, str]]:
+        """The '/' key, and 'ESC' while a filter narrows the list."""
+        return [FILTER_KEY, CLEAR_KEY] if self._filter else [FILTER_KEY]
+
     def set_filter(self, text: str) -> None:
         """Narrow the list to the lines that hold ``text``. Empty text keeps all."""
         if text == self._filter:
@@ -178,6 +276,7 @@ class Filterable:
         self._filter = text
         self._rebuild()
         self.refresh_bindings()
+        self.paint_frame_keys()
 
     def _matches(self, line: str) -> bool:
         """True when the text in effect lets this line through. Case does not count."""
@@ -323,12 +422,7 @@ class Lister(OptionList):
 class ProjectsPane(Filterable, Lister):
     """The left pane: every project with a session, under one 'All projects' line."""
 
-    BINDINGS = [
-        *SHARED_BINDINGS,
-        TO_TRASH,
-        *FILTER_BINDINGS,
-        Binding("enter", "select", "Sessions"),
-    ]
+    BINDINGS = [*SHARED_BINDINGS, TO_TRASH, *FILTER_BINDINGS, *PROJECTS_BINDINGS]
 
     class Chosen(Lister.Chosen):
         """The highlight moved. ``path`` is None on the 'All projects' line."""
@@ -380,14 +474,10 @@ class ProjectsPane(Filterable, Lister):
         )
 
 
-class DaysPane(Lister):
+class DaysPane(FrameKeys, Lister):
     """The left pane in Trash mode: the days on which something was trashed."""
 
-    BINDINGS = [
-        *SHARED_BINDINGS,
-        TO_SESSIONS,
-        Binding("enter", "select", "Entries"),
-    ]
+    BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS, *DAYS_BINDINGS]
 
     class Chosen(Lister.Chosen):
         """The highlight moved. ``day`` is None on the 'All days' line."""
@@ -525,16 +615,16 @@ class SessionsPane(Table):
         *SHARED_BINDINGS,
         TO_TRASH,
         *FILTER_BINDINGS,
-        Binding("d", "trash", "Delete"),
-        Binding("s", "scan", "Scan"),
-        Binding("S", "scan_all", "Scan all"),
-        Binding("o", "sort_next", "Sort"),
-        Binding("O", "sort_reverse", "Reverse"),
-        Binding("enter", "open", "Details"),
+        *SESSIONS_BINDINGS,
+        *SORT_BINDINGS,
     ]
     ROW_ACTIONS = frozenset({"trash", "open", "scan", "scan_all"})
     NOUN = "session"
     COMPONENT_CLASSES = STATE_CLASSES
+
+    def list_keys(self) -> list[tuple[str, str]]:
+        """This is the one list the user can order, so its frame says how."""
+        return [SORT_KEY, REVERSE_KEY]
 
     class Chosen(Table.Chosen):
         """The cursor moved to a session, or the table went empty (``None``)."""
@@ -558,14 +648,14 @@ class SessionsPane(Table):
             self.session = session
 
     class ScanWanted(Message):
-        """The user pressed 's': the session under the cursor wants a deep scan."""
+        """The user pressed 'c': the session under the cursor wants a deep scan."""
 
         def __init__(self, session: Session) -> None:
             super().__init__()
             self.session = session
 
     class ScanAllWanted(Message):
-        """The user pressed 'S': every session on view wants a deep scan."""
+        """The user pressed 'C': every session on view wants a deep scan."""
 
         def __init__(self, sessions: list[Session]) -> None:
             super().__init__()
@@ -668,13 +758,13 @@ class SessionsPane(Table):
             self.post_message(self.Opened(session))
 
     def action_scan(self) -> None:
-        """The 's' key: ask for a deep scan of the session under the cursor."""
+        """The 'c' key: ask for a deep scan of the session under the cursor."""
         session = self.selected
         if session is not None:
             self.post_message(self.ScanWanted(session))
 
     def action_scan_all(self) -> None:
-        """The 'S' key: ask for a deep scan of every session on view."""
+        """The 'C' key: ask for a deep scan of every session on view."""
         sessions = self.listed
         if sessions:
             self.post_message(self.ScanAllWanted(sessions))
@@ -827,14 +917,7 @@ class SessionsPane(Table):
 class EntriesPane(Table):
     """The upper right pane in Trash mode: the entries of one day, newest first."""
 
-    BINDINGS = [
-        *SHARED_BINDINGS,
-        TO_SESSIONS,
-        *FILTER_BINDINGS,
-        Binding("u", "restore", "Restore"),
-        Binding("x", "purge", "Purge"),
-        Binding("enter", "open", "Entry"),
-    ]
+    BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS, *FILTER_BINDINGS, *ENTRIES_BINDINGS]
     ROW_ACTIONS = frozenset({"restore", "purge", "open"})
     NOUN = "entry"
 
@@ -1009,7 +1092,7 @@ class Lines(VerticalScroll):
         self.query_one(f"#{self.id}-text", Static).update(self.text)
 
 
-class DetailsPane(Lines):
+class DetailsPane(FrameKeys, Lines):
     """The lower right pane: one session in full, the same lines ``info`` prints."""
 
     BINDINGS = [*SHARED_BINDINGS, TO_TRASH]
@@ -1022,7 +1105,7 @@ class DetailsPane(Lines):
         self.show_lines(self.fmt.describe(details) if details is not None else None)
 
 
-class EntryPane(Lines):
+class EntryPane(FrameKeys, Lines):
     """The lower right pane in Trash mode: one entry in full, with every part."""
 
     BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS]
@@ -1047,8 +1130,60 @@ class TooSmall(Static):
         self.display = False
 
 
+def view_id(name: str) -> str:
+    """The id of the widget that names ``name`` in the title bar."""
+    return f"view-{name.lower()}"
+
+
+def keyed_name(name: str) -> str:
+    """``name`` with its key in brackets: ``[S]essions``.
+
+    The brackets mark the key with no colour at all, so a screen with no colour
+    loses nothing.
+    """
+    return f"[{name[:1]}]{name[1:]}"
+
+
+def view_label(name: str, plain: bool) -> Content:
+    """``name`` for the title bar, with its key in brackets.
+
+    ``plain`` leaves the key the colour of the rest, for the name on a
+    background of its own: there the two colours would fight.
+    """
+    if plain:
+        return Content(keyed_name(name))
+    return Content.assemble("[", (name[:1], KEY_STYLE), "]", name[1:])
+
+
+class ViewWanted(Message):
+    """A click on the other name in the title bar asks for that view."""
+
+
+class ViewName(Static):
+    """One view by name in the title bar, with its key.
+
+    The name starts with the key that opens the view, in brackets. The view on
+    screen has a background as well, so the user sees which one is on view.
+    """
+
+    def __init__(self, name: str, current: bool) -> None:
+        super().__init__(id=view_id(name), classes="view-name")
+        self.current = current
+        self.set_class(current, "-on")
+        self.show_name(name)
+
+    def show_name(self, name: str) -> None:
+        """Write the name again, with its key still in brackets."""
+        self.update(view_label(name, plain=self.current))
+
+    def on_click(self) -> None:
+        """A click on the other name switches, as its key does. This one waits."""
+        if not self.current:
+            self.post_message(ViewWanted())
+
+
 class TitleBar(Horizontal):
-    """The top line."""
+    """The top line: the view switch at the left, the tool at the right."""
 
     BRAND = f"{__title__} v{__version__}"
 
@@ -1056,11 +1191,91 @@ class TitleBar(Horizontal):
     # carries it instead, in the colour the footer gives a key of its own.
     ABOUT_HINT = "(?)"
 
+    # Every view by name, in the order the title bar shows them.
+    VIEWS = ("Sessions", "Trash")
+
     def __init__(self, view: str) -> None:
         super().__init__(id="title-bar")
         self.view = view
 
     def compose(self) -> ComposeResult:
-        yield Static(self.view, id="view", markup=False)
+        for name in self.VIEWS:
+            yield ViewName(name, current=name == self.view)
+        yield Static("", id="title-gap")
         yield Static(self.BRAND, id="brand", markup=False)
         yield Static(self.ABOUT_HINT, id="about-key", markup=False)
+
+    def label_trash(self, label: str) -> None:
+        """Say how much the Trash holds now, on the name that opens it."""
+        self.query_one(f"#{view_id('Trash')}", ViewName).show_name(label)
+
+
+class KeyBar(Footer):
+    """The footer, in two parts by what a key acts on.
+
+    The left side holds the keys of the pane that has the focus, in the order
+    the pane declares them: the row under the cursor first, then the list. The
+    right side holds the keys of the whole tool. The library docks its own
+    command-palette key the same way.
+    """
+
+    def compose(self) -> ComposeResult:
+        if not self._bindings_ready:
+            return
+        shown = [
+            (binding, enabled, tooltip)
+            for _node, binding, enabled, tooltip in self.screen.active_bindings.values()
+            if binding.show
+        ]
+        for binding, enabled, tooltip in shown:
+            if binding.action not in TOOL_ACTIONS:
+                yield self._key(binding, enabled, tooltip)
+        with HorizontalGroup(id="tool-keys"):
+            for action in TOOL_ACTIONS:
+                for binding, enabled, tooltip in shown:
+                    if binding.action == action:
+                        yield self._key(binding, enabled, tooltip)
+
+    def _key(self, binding: Binding, enabled: bool, tooltip: str) -> FooterKey:
+        """One key, drawn the way the library draws every key of a footer."""
+        return FooterKey(
+            binding.key,
+            self.app.get_key_display(binding),
+            binding.description,
+            binding.action,
+            disabled=not enabled,
+            tooltip=tooltip,
+        ).data_bind(compact=Footer.compact)
+
+
+# The 'enter' key of a left pane, in one line for both views.
+INTO_LIST = Binding("enter", "select", "Into its list", show=False)
+
+
+def key_help() -> list[tuple[str, list[Binding]]]:
+    """Every key the tool answers, by group, for the About box.
+
+    The footer lists the keys of the row and of the tool, a pane frame the keys
+    of the pane, and the title bar the keys of the views. This is the one place
+    that names them all. A view names its own key in its title, the way the
+    title bar does, so no line of its own is needed for it.
+    """
+    by_key = {binding.key: binding for binding in SHARED_BINDINGS}
+    slash, clear = FILTER_BINDINGS
+    return [
+        (keyed_name("Sessions"), [*SESSIONS_BINDINGS, *SORT_BINDINGS]),
+        (keyed_name("Trash"), list(ENTRIES_BINDINGS)),
+        (
+            "Every pane",
+            [
+                INTO_LIST,
+                by_key["tab"],
+                slash,
+                clear,
+                by_key["r"],
+                by_key["f2"],
+                by_key["question_mark"],
+                by_key["q"],
+            ],
+        ),
+    ]

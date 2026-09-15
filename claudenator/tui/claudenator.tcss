@@ -4,18 +4,37 @@ Screen {
     layout: vertical;
 }
 
-/* The top line: the view on the left, the tool and its version on the right. */
+/* The top line: every view by name on the left, the tool and its version on
+   the right. The view switch lives here because a view holds the whole screen,
+   so the footer keeps its room for the keys of the row and of the tool. */
 #title-bar {
     height: 1;
     background: $panel;
     color: $foreground;
 }
 
-#view {
-    width: 1fr;
+.view-name {
+    width: auto;
     padding: 0 1;
+    color: $text-muted;
     text-wrap: nowrap;
-    text-overflow: ellipsis;
+}
+
+/* The view on screen. The pair is the one a list gives the row under its
+   cursor, so the name reads in every theme. */
+.view-name.-on {
+    background: $block-cursor-background;
+    color: $block-cursor-foreground;
+    text-style: bold;
+}
+
+.view-name:hover {
+    background: $block-hover-background;
+}
+
+/* The room between the view names and the tool. */
+#title-gap {
+    width: 1fr;
 }
 
 #brand {
@@ -58,10 +77,16 @@ ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane, Filte
     border-title-color: $text-muted;
 }
 
+/* The keys of the pane itself sit on the bottom-right of its own frame. Only
+   the pane with the focus answers them, so only it shows them. The words take
+   the plain colour of text; every key carries the colour the footer gives a
+   key, so the key alone catches the eye. See ``KEY_STYLE``. */
 ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus,
 DaysPane:focus, EntriesPane:focus, EntryPane:focus, FilterBox:focus {
     border: round $border;
     border-title-color: $text;
+    border-subtitle-color: $text;
+    border-subtitle-align: right;
 }
 
 ProjectsPane, DaysPane {
@@ -113,6 +138,14 @@ FilterBox {
     padding: 0 1;
 }
 
+/* The keys of the whole tool, at the right edge of the footer, away from the
+   keys of the pane. The library docks its own command-palette key this way. */
+#tool-keys {
+    dock: right;
+    width: auto;
+    height: 1;
+}
+
 /* The window has no room for the panes. This message takes their place. */
 #too-small {
     width: 1fr;
@@ -154,9 +187,22 @@ AboutScreen {
     border-title-color: $text;
 }
 
+/* The tool at the left, its keys at the right: two short columns keep the box
+   inside a window of 80 by 24. */
+#about-columns {
+    width: auto;
+    height: auto;
+}
+
 #about-text {
     width: auto;
     text-align: center;
+    text-wrap: nowrap;
+}
+
+#about-keys {
+    width: auto;
+    margin: 0 0 0 2;
     text-wrap: nowrap;
 }
 

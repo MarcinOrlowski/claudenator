@@ -40,6 +40,7 @@ from claudenator.tui.panes import (
     EntryPane,
     FilterBox,
     FilterWanted,
+    KeyBar,
     Lines,
     Lister,
     ProjectsPane,
@@ -47,7 +48,7 @@ from claudenator.tui.panes import (
     Table,
     TitleBar,
     TooSmall,
-    label_trash_key,
+    ViewWanted,
 )
 from claudenator.tui.settings import SettingsChanged, SettingsScreen
 
@@ -208,8 +209,17 @@ class PaneScreen(Screen[ScreenResultType]):
             lines.repaint()
 
     def _show_trash(self, entries: list[TrashEntry]) -> None:
-        """The 't' key says how much the Trash holds now."""
-        label_trash_key(self, self.fmt.trash_key(entries))
+        """The Trash name in the title bar says how much the Trash holds now."""
+        self.query_one(TitleBar).label_trash(self.fmt.trash_key(entries))
+
+    def on_view_wanted(self, event: ViewWanted) -> None:
+        """A click on the other name in the title bar: switch, as its key does."""
+        event.stop()
+        self.switch_view()
+
+    def switch_view(self) -> None:
+        """Go to the other view. Each screen names which one that is."""
+        raise NotImplementedError
 
 
 class MainScreen(PaneScreen[None]):
@@ -236,7 +246,7 @@ class MainScreen(PaneScreen[None]):
                 yield FilterBox(sessions)
                 yield DetailsPane(self.fmt)
         yield self._too_small()
-        yield Footer()
+        yield KeyBar()
 
     def on_mount(self) -> None:
         """Shape the layout and order the table from the settings, fill and focus."""
@@ -286,6 +296,10 @@ class MainScreen(PaneScreen[None]):
         """The 't' key: the panes switch to the Trash."""
         self.app.push_screen(TrashScreen(self.store, self.fmt), self._back_from_trash)
 
+    def switch_view(self) -> None:
+        """The other view is the Trash."""
+        self.action_trash_mode()
+
     def on_projects_pane_chosen(self, event: ProjectsPane.Chosen) -> None:
         """List sessions of highlighted project."""
         if event.path is None:
@@ -317,7 +331,7 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_scan_wanted(self, event: SessionsPane.ScanWanted) -> None:
-        """The 's' key: deep-scan the session under the cursor.
+        """The 'c' key: deep-scan the session under the cursor.
 
         Its row and its details take the figures, and a word says what was
         counted. Figures already fresh in the cache are used as they are:
@@ -328,7 +342,7 @@ class MainScreen(PaneScreen[None]):
     def on_sessions_pane_scan_all_wanted(
         self, event: SessionsPane.ScanAllWanted
     ) -> None:
-        """The 'S' key: deep-scan every session on view, in the background."""
+        """The 'C' key: deep-scan every session on view, in the background."""
         count = len(event.sessions)
         self.notify(
             f"Reading {count} {plural_of('transcript', count)}", title="Deep scan"
@@ -454,7 +468,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
                 yield FilterBox(entries)
                 yield EntryPane(self.fmt)
         yield self._too_small()
-        yield Footer()
+        yield KeyBar()
 
     def on_mount(self) -> None:
         """Shape the layout, fill, and focus the entries: that is where the keys are."""
@@ -479,8 +493,12 @@ class TrashScreen(PaneScreen[TrashVisit]):
         super().refresh_settings()
 
     def action_sessions_mode(self) -> None:
-        """The 't' key: the panes switch back to the sessions."""
+        """The 's' key: the panes switch back to the sessions."""
         self.dismiss(TrashVisit(self._entries, self._restored))
+
+    def switch_view(self) -> None:
+        """The other view is the sessions."""
+        self.action_sessions_mode()
 
     def on_days_pane_chosen(self, event: DaysPane.Chosen) -> None:
         """List the entries that went in on the highlighted day."""
@@ -562,6 +580,18 @@ class ClaudenatorApp(App[None]):
     # Textual's own command box, on 'ctrl+p', is not part of this tool. Off, it
     # takes its key and its footer entry with it.
     ENABLE_COMMAND_PALETTE = False
+
+    # A key with a word for a name is written in capitals, so it never reads as
+    # a letter to press. A key that is one character keeps its own case, because
+    # there the case is the key. The library draws 'enter' as a glyph and writes
+    # the rest in lower case, so the tool names them itself.
+    KEY_NAMES = {"enter": "ENTER", "escape": "ESC", "tab": "TAB", "f2": "F2"}
+
+    def get_key_display(self, binding: Binding) -> str:
+        """The key as the user reads it, the same wherever the tool names one."""
+        if binding.key_display:
+            return binding.key_display
+        return self.KEY_NAMES.get(binding.key) or super().get_key_display(binding)
 
     def __init__(
         self, settings: Settings | None = None, notes: list[str] | None = None

@@ -36,6 +36,7 @@ from textual.widgets import (
     Switch,
     TabbedContent,
 )
+from textual.widgets._footer import FooterKey
 
 import claudenator.core.store
 import claudenator.tui.app
@@ -65,6 +66,7 @@ from claudenator.tui.panes import (
     EntriesPane,
     EntryPane,
     FilterBox,
+    KeyBar,
     Lines,
     Lister,
     ProjectsPane,
@@ -72,6 +74,9 @@ from claudenator.tui.panes import (
     Table,
     TitleBar,
     TooSmall,
+    ViewName,
+    key_help,
+    view_id,
 )
 from claudenator.tui.settings import OptionRow, SettingsScreen, slug
 from tests.fabricate import (
@@ -143,6 +148,38 @@ def shown_keys(app: ClaudenatorApp) -> dict[str, str]:
         for key, active in app.active_bindings.items()
         if active.binding.show
     }
+
+
+def footer_keys(app: ClaudenatorApp) -> list[str]:
+    """The keys the footer draws, left to right, as the user reads them."""
+    bar = app.screen.query_one(KeyBar)
+    return [f"{key.key_display} {key.description}" for key in bar.query(FooterKey)]
+
+
+def tool_keys(app: ClaudenatorApp) -> list[str]:
+    """The keys docked at the right edge of the footer, left to right."""
+    group = app.screen.query_one("#tool-keys")
+    return [f"{key.key_display} {key.description}" for key in group.query(FooterKey)]
+
+
+def view_names(app: ClaudenatorApp) -> list[tuple[str, bool]]:
+    """Every view in the title bar: its name, and whether it is the one on screen."""
+    return [
+        (str(name.content), name.has_class("-on"))
+        for name in app.screen.query(ViewName)
+    ]
+
+
+def trash_name(app: ClaudenatorApp) -> str:
+    """The name of the Trash in the title bar, with how much it holds."""
+    return str(app.screen.query_one(f"#{view_id('Trash')}", ViewName).content)
+
+
+def frame_keys(app: ClaudenatorApp) -> str:
+    """The keys the pane with the focus draws on its own frame."""
+    pane = app.focused
+    assert pane is not None
+    return pane.frame_line
 
 
 def three_sessions(fake: FakeClaude) -> tuple[str, str, str]:
@@ -847,10 +884,17 @@ def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
     assert "BINDINGS" not in ClaudenatorApp.__dict__
     assert "BINDINGS" not in MainScreen.__dict__
     assert "BINDINGS" not in TrashScreen.__dict__
-    panes = (ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane)
-    for pane in panes:
+    views = {
+        ProjectsPane: "t",
+        SessionsPane: "t",
+        DetailsPane: "t",
+        DaysPane: "s",
+        EntriesPane: "s",
+        EntryPane: "s",
+    }
+    for pane, view_key in views.items():
         keys = {binding.key for binding in pane.__dict__["BINDINGS"]}
-        assert {"tab", "q", "r", "t", "question_mark"} <= keys, pane.__name__
+        assert {"tab", "q", "r", view_key, "question_mark"} <= keys, pane.__name__
 
 
 async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
@@ -901,7 +945,12 @@ async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
 async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The footer lists the keys of the focused pane and follows the focus."""
+    """The footer lists the keys of the focused pane and follows the focus.
+
+    Only the keys that act on a row are there. A key that acts on the pane sits
+    on the pane frame, and a key that acts on the view in the title bar, so the
+    footer never lists them.
+    """
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -918,10 +967,153 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     assert keys[0] == keys[3]
     assert keys[0] != keys[1]
     assert keys[0]["enter"] == "Details"
-    assert keys[2]["enter"] == "Sessions"
     assert "enter" not in keys[1]
+    assert "enter" not in keys[2]
     for listed in keys:
-        assert {"tab", "q"} <= set(listed)
+        assert {"f2", "q"} <= set(listed)
+        assert not {"tab", "r", "t", "slash", "escape"} & set(listed)
+
+
+async def test_the_footer_orders_the_keys_of_a_pane_by_the_row_then_the_list(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """One order rule on every pane: the row under the cursor first, then the list."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        sessions = footer_keys(app)
+        await pilot.press("t")
+        await pilot.pause()
+        entries = footer_keys(app)
+
+    assert sessions == [
+        "ENTER Details",
+        "d Delete",
+        "c Scan",
+        "C Scan all",
+        "F2 Settings",
+        "q Quit",
+    ]
+    assert entries == ["ENTER Entry", "u Restore", "x Purge", "F2 Settings", "q Quit"]
+
+
+async def test_the_footer_holds_the_keys_of_the_tool_at_its_right_edge(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'F2 Settings' and 'q Quit' act on the whole tool, so they dock at the right.
+
+    They stand there on every pane and in both views, away from the keys that
+    act on the row under the cursor.
+    """
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    seen: list[list[str]] = []
+    edges: list[bool] = []
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for keys in ((), ("tab",), ("tab", "tab"), ("t",), ("tab",)):
+            await pilot.press(*keys)
+            await pilot.pause()
+            seen.append(tool_keys(app))
+            edges.append(app.screen.query_one("#tool-keys").region.right == WIDE[0])
+
+    assert seen == [["F2 Settings", "q Quit"]] * 5
+    assert edges == [True] * 5
+
+
+async def test_the_pane_with_the_focus_shows_its_own_keys_on_its_frame(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A key that acts on a pane sits on the bottom edge of that pane's frame.
+
+    It works only in the pane that has the focus, so only that pane shows it. A
+    pane that cannot narrow its list shows the reload key alone.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        on_table = frame_keys(app)
+        quiet = [
+            str(app.screen.query_one(pane).border_subtitle or "")
+            for pane in (ProjectsPane, DetailsPane)
+        ]
+        await pilot.press("tab")
+        await pilot.pause()
+        on_details = frame_keys(app)
+        await pilot.press("tab")
+        await pilot.pause()
+        on_projects = frame_keys(app)
+        table_now = str(app.screen.query_one(SessionsPane).border_subtitle or "")
+
+    assert on_table == "r Reload  o Sort  O Reverse  / Filter"
+    assert quiet == ["", ""]
+    assert on_details == "r Reload"
+    assert on_projects == "r Reload  / Filter"
+    assert table_now == ""
+
+
+async def test_the_keys_on_a_frame_are_drawn_at_its_bottom_right(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The keys sit on the bottom edge of the frame, at its right end.
+
+    Every key takes the theme variable the footer gives its own keys, so a key
+    reads the same in both places. The words beside it keep the plain colour of
+    text, so the key alone catches the eye. The title on the top edge is left
+    alone.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        strips = app.screen._compositor.render_strips()
+        drawn = strips[table.region.bottom - 1]
+        top = strips[table.region.y].text
+        painted = {
+            segment.text: segment.style.color.name
+            for segment in drawn._segments
+            if segment.style is not None and segment.style.color is not None
+        }
+        wanted = app.theme_variables["footer-key-foreground"].lower()
+
+    assert drawn.text.rstrip().endswith("r Reload  o Sort  O Reverse  / Filter ─╯")
+    assert "Sessions (3 sessions" in top
+    assert [painted[key] for key in ("r", "o", "O", "/")] == [wanted] * 4
+    assert painted[" Reload  "] != wanted
+
+
+async def test_a_frame_too_narrow_for_its_keys_cuts_them_and_keeps_its_title(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A frame with no room for all its keys cuts them, and says so with an ellipsis.
+
+    The title has the top edge to itself, so the keys never eat into it.
+    """
+    three_sessions(fake)
+    settings.projects_pane_share = 0.1
+    settings.projects_pane_min_width = 20
+    settings.stack_panes_below = 40
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=(60, 20)) as pilot:
+        await pilot.pause()
+        pane = app.screen.query_one(ProjectsPane)
+        pane.focus()
+        await pilot.pause()
+        strips = app.screen._compositor.render_strips()
+        width = pane.region.width
+        top = strips[pane.region.y].text[:width]
+        bottom = strips[pane.region.bottom - 1].text[:width]
+        keys = pane.frame_line
+
+    assert width == 20
+    assert "Projects (2)" in top
+    assert keys == "r Reload  / Filter"
+    assert "…" in bottom and "Filter" not in bottom
 
 
 async def test_enter_on_a_project_moves_into_its_sessions(
@@ -1240,18 +1432,17 @@ async def test_enter_keeps_the_filter_and_escape_on_the_pane_clears_it(
         await pilot.pause()
         kept = rows(table), table.selected_id, box.display, box.value
         focused = type(app.focused)
-        keys = shown_keys(app)
+        keys = frame_keys(app)
         await pilot.press("escape")
         await pilot.pause()
         cleared = rows(table), table.selected_id, box.display, table.filter_text
-        keys_after = shown_keys(app)
+        keys_after = frame_keys(app)
 
     assert kept == ([b1], b1, True, "b")
     assert focused is SessionsPane
-    assert keys["escape"] == "Clear filter"
-    assert keys["slash"] == "Filter"
+    assert keys == "r Reload  o Sort  O Reverse  / Filter  ESC Clear"
     assert cleared == ([a1, a2, b1], b1, False, "")
-    assert "escape" not in keys_after
+    assert keys_after == "r Reload  o Sort  O Reverse  / Filter"
 
 
 async def test_slash_on_the_projects_pane_narrows_the_projects_by_path(
@@ -1486,11 +1677,17 @@ async def test_with_no_row_d_is_dimmed_and_does_nothing(
         await pilot.pause()
         active = app.active_bindings["d"]
         dimmed = active.binding.show, active.enabled
+        drawn = [
+            key.has_class("-disabled")
+            for key in app.screen.query(FooterKey)
+            if key.key == "d"
+        ]
         await pilot.press("d")
         await pilot.pause()
         shown = toasts(app)
 
     assert dimmed == (True, False)
+    assert drawn == [True]
     assert shown == []
     assert trashed(settings) == []
 
@@ -1539,14 +1736,14 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
         await pilot.pause()
         await pilot.press("down")
         await pilot.pause()
-        before = type(app.screen), type(app.focused), shown_keys(app)["t"]
+        before = type(app.screen), type(app.focused), view_names(app)
         await pilot.press("t")
         await pilot.pause()
         table = app.screen.query_one(EntriesPane)
         in_trash = (
             type(app.screen),
             type(app.focused),
-            shown_keys(app)["t"],
+            view_names(app),
             days(app),
             cursor(table),
             columns(table),
@@ -1555,16 +1752,20 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
         left = app.screen.query_one(DaysPane).region
         upper = table.region
         lower = app.screen.query_one(EntryPane).region
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         sessions = app.screen.query_one(SessionsPane)
         after = type(app.screen), type(app.focused), cursor(sessions)
 
-    assert before == (MainScreen, SessionsPane, "Trash (1)")
+    assert before == (
+        MainScreen,
+        SessionsPane,
+        [("[S]essions", True), ("[T]rash (1)", False)],
+    )
     assert in_trash == (
         TrashScreen,
         EntriesPane,
-        "Sessions",
+        [("[S]essions", False), ("[T]rash (1)", True)],
         [ALL_DAYS, fmt.day(entry.trashed_at)],
         ([entry.id], entry.id, 0),
         ["Title", "Trashed", "Size", "Project"],
@@ -1689,7 +1890,7 @@ async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_rel
         # A session that lands on the disk now shows up only after a reload
         late = new_id()
         fake.transcript("/p/a", late, session_records(late, "/p/a"), mtime=4000)
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         after = prompts(app), cursor(app.screen.query_one(SessionsPane))
         text = app.screen.query_one(DetailsPane).text
@@ -1722,7 +1923,7 @@ async def test_a_restore_blocked_by_an_occupied_path_reports_the_clash_and_chang
         await pilot.pause()
         after = type(app.screen), cursor(app.screen.query_one(EntriesPane))
         shown = toasts(app)
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         listed = rows(app.screen.query_one(SessionsPane))
 
@@ -1752,7 +1953,7 @@ async def test_x_removes_the_entry_for_good(
         await pilot.press("y")
         await pilot.pause()
         emptied = cursor(app.screen.query_one(EntriesPane)), days(app), toasts(app)
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         listed = rows(app.screen.query_one(SessionsPane))
 
@@ -1764,22 +1965,24 @@ async def test_x_removes_the_entry_for_good(
 
 
 def titles(app: ClaudenatorApp) -> tuple[str, str, str, str]:
-    """The view in the title bar, the label of the 't' key, the left pane title, the table title."""
+    """The view on screen, the Trash name in the title bar, the left pane title, the table title."""
     screen = app.screen
     return (
         screen.query_one(TitleBar).view,
-        shown_keys(app)["t"],
+        trash_name(app),
         str(screen.query_one(Lister).border_title),
         str(screen.query_one(Table).border_title),
     )
 
 
-async def test_the_title_bar_names_the_view_on_the_left_and_the_tool_on_the_right(
+async def test_the_title_bar_names_both_views_on_the_left_and_the_tool_on_the_right(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The title bar names the view at the left edge, and the tool with its version at the right.
+    """The title bar names both views at the left edge, and the tool with its version at the right.
 
-    The 'about' key comes last, after the version, because the footer drops it.
+    A view holds the whole screen, so its key belongs here and not in the
+    footer. The 'about' key comes last, after the version, because the footer
+    drops it too.
     """
     three_sessions(fake)
     app = ClaudenatorApp(settings)
@@ -1787,20 +1990,171 @@ async def test_the_title_bar_names_the_view_on_the_left_and_the_tool_on_the_righ
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         bar = app.screen.query_one(TitleBar).region
-        view = app.screen.query_one("#view").region
+        first = app.screen.query_one(f"#{view_id('Sessions')}").region
         hint = app.screen.query_one("#about-key").region
         top = app.screen._compositor.render_strips()[0].text
+        on_sessions = view_names(app)
         await pilot.press("t")
         await pilot.pause()
         in_trash = app.screen._compositor.render_strips()[0].text
+        on_trash = view_names(app)
 
     assert (bar.x, bar.y, bar.width, bar.height) == (0, 0, WIDE[0], 1)
-    assert view.x == 0
+    assert first.x == 0
     assert hint.right == WIDE[0]
-    assert top.startswith(" Sessions ")
+    assert top.startswith(" [S]essions  [T]rash ")
     assert top.rstrip().endswith(end)
-    assert in_trash.startswith(" Trash ")
+    assert in_trash.startswith(" [S]essions  [T]rash ")
     assert in_trash.rstrip().endswith(end)
+    assert on_sessions == [("[S]essions", True), ("[T]rash", False)]
+    assert on_trash == [("[S]essions", False), ("[T]rash", True)]
+
+
+async def test_a_click_on_the_other_view_name_switches_to_that_view(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A click on the name of the other view switches to it, as the 't' key does.
+
+    A click on the view already on screen changes nothing.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.click(f"#{view_id('Sessions')}")
+        await pilot.pause()
+        stayed = type(app.screen)
+        await pilot.click(f"#{view_id('Trash')}")
+        await pilot.pause()
+        moved = type(app.screen), view_names(app)
+        await pilot.click(f"#{view_id('Sessions')}")
+        await pilot.pause()
+        back = type(app.screen)
+
+    assert stayed is MainScreen
+    assert moved == (TrashScreen, [("[S]essions", False), ("[T]rash", True)])
+    assert back is MainScreen
+
+
+async def test_the_view_on_screen_carries_a_background_of_its_own(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The view on screen has a background in the title bar, the other one has none.
+
+    The colours are the pair a list gives the row under its cursor, so the name
+    reads in every theme, and it follows the theme.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        on, off = app.screen.query(ViewName)
+        first = Color.parse(app.theme_variables["block-cursor-background"])
+        before = on.rich_style.bgcolor, off.rich_style.bgcolor
+        app.theme = "gruvbox"
+        await pilot.pause()
+        second = Color.parse(app.theme_variables["block-cursor-background"])
+        after = on.rich_style.bgcolor
+
+    assert before[0] is not None and before[0].name == first.hex.lower()
+    assert before[1] is not None and before[1].name != first.hex.lower()
+    assert after is not None and after.name == second.hex.lower()
+    assert first != second
+
+
+async def test_every_view_name_carries_its_own_key_in_brackets(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A view names the key that opens it, in brackets: ``[S]essions``.
+
+    The brackets say which key with no colour at all, so a screen with no colour
+    loses nothing. The key still takes the colour the footer gives a key. The
+    view on screen drops that colour: it has colours of its own, and the two
+    would fight.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        top = app.screen._compositor.render_strips()[0]
+        painted = {
+            segment.text: segment.style.color.name
+            for segment in top._segments
+            if segment.style is not None and segment.style.color is not None
+        }
+        wanted = app.theme_variables["footer-key-foreground"].lower()
+        on_screen = next(text for text in painted if "[S]essions" in text)
+        names = view_names(app)
+        await pilot.press("t")
+        await pilot.pause()
+        in_trash = view_names(app)
+
+    assert names == [("[S]essions", True), ("[T]rash", False)]
+    assert in_trash == [("[S]essions", False), ("[T]rash", True)]
+    assert painted["T"] == wanted
+    assert painted[on_screen] != wanted
+
+
+async def test_a_key_with_a_word_for_a_name_is_written_in_capitals(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """``ENTER``, ``ESC``, ``TAB`` and ``F2`` are written in capitals everywhere.
+
+    A word in capitals never reads as a letter to press. A key that is one
+    character keeps its own case, because there the case is the key.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        on_panes = footer_keys(app)
+        await pilot.press("enter")
+        await pilot.pause()
+        in_full = app.screen._compositor.render_strips()[-1].text
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("slash")
+        await pilot.pause()
+        on_filter = app.screen._compositor.render_strips()[-1].text
+
+    assert "ENTER Details" in on_panes
+    assert "d Delete" in on_panes
+    assert in_full.strip() == "ESC Close"
+    assert on_filter.strip() == "ENTER Done  ESC Clear"
+
+
+async def test_the_about_box_lists_every_key_the_tool_answers(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The footer and the pane frames show only some keys, so the About box has them all.
+
+    A key reads there the way it reads in the footer, so a new user loses no key.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        text = str(app.screen.query_one("#about-keys", Static).content)
+        groups = [
+            (title, [(app.get_key_display(b), b.description) for b in bindings])
+            for title, bindings in key_help()
+        ]
+
+    lines = text.splitlines()
+    assert [title for title, _rows in groups] == [
+        "[S]essions",
+        "[T]rash",
+        "Every pane",
+    ]
+    for title, rows in groups:
+        assert title in lines
+        for key, what in rows:
+            wanted = rf"^  {re.escape(key)} +{re.escape(what)}$"
+            assert re.search(wanted, text, re.M), f"{key} {what}"
+    listed = {key for _title, rows in groups for key, _what in rows}
+    assert {"ENTER", "TAB", "/", "ESC", "r", "o", "O", "F2", "?", "q"} <= listed
 
 
 async def test_the_about_key_on_the_title_bar_takes_the_colour_of_a_footer_key(
@@ -1856,7 +2210,7 @@ async def test_the_built_in_command_box_is_off_and_its_key_opens_nothing(
 async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_change(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 't' key carries the Trash count, each pane title what it shows. All follow a change."""
+    """The Trash name carries its count, each pane title what it shows. All follow a change."""
     a1, a2, b1 = three_sessions(fake)
     store = SessionStore(settings)
     a1_size = store.find_session(a1).size
@@ -1882,7 +2236,7 @@ async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_chan
         await pilot.press("y")
         await pilot.pause()
         after_purge = titles(app)
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         back = titles(app)
 
@@ -1890,12 +2244,12 @@ async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_chan
     one_left = f"Sessions (1 session, {fmt.size(a2_size)} total)"
     one = f"Trash (1 entry, {fmt.size(old.size)} total)"
     two = f"Trash (2 entries, {fmt.size(old.size + a1_size)} total)"
-    assert at_start == ("Sessions", "Trash (1)", "Projects (1)", both)
-    assert after_delete == ("Sessions", "Trash (2)", "Projects (1)", one_left)
-    assert in_trash == ("Trash", "Sessions", "Days (2)", two)
-    assert after_restore == ("Trash", "Sessions", "Days (1)", one)
-    assert after_purge == ("Trash", "Sessions", "Days (empty)", "Trash (empty)")
-    assert back == ("Sessions", "Trash", "Projects (1)", both)
+    assert at_start == ("Sessions", "[T]rash (1)", "Projects (1)", both)
+    assert after_delete == ("Sessions", "[T]rash (2)", "Projects (1)", one_left)
+    assert in_trash == ("Trash", "[T]rash (2)", "Days (2)", two)
+    assert after_restore == ("Trash", "[T]rash (1)", "Days (1)", one)
+    assert after_purge == ("Trash", "[T]rash", "Days (empty)", "Trash (empty)")
+    assert back == ("Sessions", "[T]rash", "Projects (1)", both)
 
 
 async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
@@ -2007,7 +2361,7 @@ async def test_with_an_empty_trash_the_panes_are_empty_and_the_keys_are_dimmed(
         await pilot.press("u", "x")
         await pilot.pause()
         shown = toasts(app)
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         back = type(app.screen)
 
@@ -2069,7 +2423,7 @@ async def test_repeated_u_walks_down_the_entries_and_every_session_put_back_is_l
             await pilot.press("u")
             await pilot.pause()
             seen.append(cursor(table))
-        await pilot.press("t")
+        await pilot.press("s")
         await pilot.pause()
         back = prompts(app), cursor(app.screen.query_one(SessionsPane))
 
@@ -2627,10 +2981,10 @@ def gated_scan(
     return seen
 
 
-async def test_s_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
+async def test_c_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 's' key reads one transcript in full and leaves the panes where they are.
+    """The 'c' key reads one transcript in full and leaves the panes where they are.
 
     The Msgs cell of that row fills in, the details pane takes the figures, and
     a notification says what was counted. The figures need no screen of their
@@ -2641,9 +2995,9 @@ async def test_s_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        key = shown_keys(app).get("s")
+        key = shown_keys(app).get("c")
         blank = str(table.get_cell(a1, "msgs"))
-        await pilot.press("s")
+        await pilot.press("c")
         await app.workers.wait_for_complete()
         await pilot.pause()
         where = type(app.screen), type(app.focused)
@@ -2660,7 +3014,7 @@ async def test_s_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
     assert shown == [("information", "Deep scan", "1 turn, 0 tokens, 0 tool calls")]
 
 
-async def test_s_takes_figures_already_in_the_cache_and_reads_no_transcript_again(
+async def test_c_takes_figures_already_in_the_cache_and_reads_no_transcript_again(
     fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A result already cached shows at once. Nothing is computed a second time."""
@@ -2673,7 +3027,7 @@ async def test_s_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("s")
+        await pilot.press("c")
         await app.workers.wait_for_complete()
         await pilot.pause()
         cell = str(app.query_one(SessionsPane).get_cell(a1, "msgs"))
@@ -2686,10 +3040,10 @@ async def test_s_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
     assert shown == [("information", "Deep scan", "1 turn, 0 tokens, 0 tool calls")]
 
 
-async def test_capital_s_scans_every_session_listed_and_fills_the_msgs_column(
+async def test_capital_c_scans_every_session_listed_and_fills_the_msgs_column(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 'S' key scans the sessions on view and leaves the others alone.
+    """The 'C' key scans the sessions on view and leaves the others alone.
 
     Every row on view fills in, and the count of what was done shows at the end.
     """
@@ -2703,8 +3057,8 @@ async def test_capital_s_scans_every_session_listed_and_fills_the_msgs_column(
         listed = rows(table)
         await pilot.press("tab")
         await pilot.pause()
-        key = shown_keys(app).get("S")
-        await pilot.press("S")
+        key = shown_keys(app).get("C")
+        await pilot.press("C")
         await app.workers.wait_for_complete()
         await pilot.pause()
         cells = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
@@ -2733,7 +3087,7 @@ async def test_the_screen_answers_keys_while_a_scan_runs_in_the_background(
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
             table = app.query_one(SessionsPane)
-            await pilot.press("S")
+            await pilot.press("C")
             await pilot.pause()
             await pilot.press("down")
             await pilot.pause()
@@ -2764,7 +3118,7 @@ async def test_a_scan_cut_short_by_a_quit_leaves_the_cache_whole(
     try:
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
-            await pilot.press("S")
+            await pilot.press("C")
             held = await until(lambda: len(seen) == 2, pilot)
             await pilot.press("q")
             await pilot.pause()
@@ -2804,7 +3158,7 @@ async def test_a_row_never_moves_while_the_scan_runs_and_the_order_settles_at_th
             await pilot.press("o", "o")
             await pilot.pause()
             start = rows(table), table.sorting
-            await pilot.press("S")
+            await pilot.press("C")
             held = await until(lambda: len(seen) == 3, pilot)
             painted = await until(
                 lambda: str(table.get_cell(top, "msgs")) == "3", pilot
@@ -2836,7 +3190,7 @@ async def test_a_transcript_that_will_not_read_says_why_and_the_scan_walks_on(
         await pilot.pause()
         table = app.query_one(SessionsPane)
         (settings.projects_dir / encode_project("/p/a") / f"{a1}.jsonl").unlink()
-        await pilot.press("S")
+        await pilot.press("C")
         await app.workers.wait_for_complete()
         await pilot.pause()
         cells = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
@@ -2873,7 +3227,7 @@ async def test_a_scan_does_not_pull_the_list_from_under_the_cursor(
         await pilot.press(*["down"] * 19, "up", "up")
         await pilot.pause()
         before = table.scroll_offset.y, table.cursor_row
-        await pilot.press("s")
+        await pilot.press("c")
         await app.workers.wait_for_complete()
         await pilot.pause()
         after = table.scroll_offset.y, table.cursor_row
