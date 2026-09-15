@@ -37,7 +37,8 @@ SHARED_BINDINGS = [
     Binding("tab", "app.focus_next", "Next pane"),
     Binding("shift+tab", "app.focus_previous", "Previous pane", show=False),
     Binding("r", "screen.reload", "Reload"),
-    Binding("question_mark", "app.about", "About", key_display="?"),
+    # The title bar shows this key, so the footer keeps the room for the rest.
+    Binding("question_mark", "app.about", "About", key_display="?", show=False),
     Binding("q", "app.quit", "Quit"),
 ]
 
@@ -1034,6 +1035,10 @@ class TitleBar(Horizontal):
 
     BRAND = f"{__title__} v{__version__}"
 
+    # The 'about' key is the only key the footer does not list, so the title bar
+    # carries it instead, in the colour the footer gives a key of its own.
+    ABOUT_HINT = "(?)"
+
     def __init__(self, view: str) -> None:
         super().__init__(id="title-bar")
         self.view = view
@@ -1041,3 +1046,4 @@ class TitleBar(Horizontal):
     def compose(self) -> ComposeResult:
         yield Static(self.view, id="view", markup=False)
         yield Static(self.BRAND, id="brand", markup=False)
+        yield Static(self.ABOUT_HINT, id="about-key", markup=False)

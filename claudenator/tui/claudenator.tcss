@@ -20,7 +20,16 @@ Screen {
 
 #brand {
     width: auto;
+    padding: 0 0 0 1;
+}
+
+/* The 'about' key, at the right of the brand. The colour is the one the footer
+   gives its own keys, so a key reads the same in both places. */
+#about-key {
+    width: auto;
     padding: 0 1;
+    color: $footer-key-foreground;
+    text-style: bold;
 }
 
 #body {

@@ -511,6 +511,10 @@ class ClaudenatorApp(App[None]):
     TITLE = __title__
     CSS_PATH = "claudenator.tcss"
 
+    # Textual's own command box, on 'ctrl+p', is not part of this tool. Off, it
+    # takes its key and its footer entry with it.
+    ENABLE_COMMAND_PALETTE = False
+
     def __init__(self, settings: Settings | None = None) -> None:
         super().__init__()
         self.settings = settings if settings is not None else Settings()
