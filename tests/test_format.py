@@ -173,7 +173,7 @@ def test_the_mark_and_the_share_of_the_start_come_from_the_settings() -> None:
 
 
 def test_a_long_title_is_cut_in_the_middle_by_the_character_and_its_end_stays() -> None:
-    """A long title is cut in the middle, by the character. Its end and its marks stay.
+    """A long title is cut in the middle, by the character, and its end stays.
 
     A title is not cut at its spaces: one long word would take the rest with it.
     """
@@ -240,6 +240,22 @@ def session(**overrides: Any) -> Session:
     )
     fields.update(overrides)
     return Session(**fields)
+
+
+def test_the_state_marks_hold_one_slot_for_every_state() -> None:
+    """The state marks hold one slot per state: live, fork, damaged."""
+    fmt = Formatter(Settings())
+
+    assert fmt.marks(session()) == "---"
+    assert fmt.marks(session(live=True)) == "L--"
+    assert fmt.marks(session(fork_parent="mum")) == "-F-"
+    assert fmt.marks(session(damaged=True)) == "--D"
+    assert fmt.marks(session(live=True, fork_parent="mum")) == "LF-"
+    assert fmt.marks(session(live=True, fork_parent="mum", damaged=True)) == "LFD"
+    assert fmt.state_width == 3
+    own = Formatter(Settings(state_marks="lfd", state_off="."))
+    assert own.marks(session(live=True, damaged=True)) == "l.d"
+    assert own.state_width == 3
 
 
 def test_describe_names_the_folder_once_and_the_files_in_it_by_their_name() -> None:

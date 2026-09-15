@@ -47,11 +47,13 @@ from conclaude.core.trash import (
 )
 
 # The columns a session list can be ordered by.
-SORT_COLUMNS = ("title", "last_used", "created", "size", "msgs", "project")
+SORT_COLUMNS = ("state", "title", "last_used", "created", "size", "msgs", "project")
 
 
 def sort_key(column: str) -> Callable[[Session], Any]:
     """The key that orders sessions by ``column``. An unknown column orders by last use."""
+    if column == "state":
+        return lambda session: (session.live, session.is_fork, session.damaged)
     if column == "title":
         return lambda session: session.title.casefold()
     if column == "created":

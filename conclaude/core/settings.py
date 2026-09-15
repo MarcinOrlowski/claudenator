@@ -66,6 +66,9 @@ class Settings:
     # The share of the room the start of a cut text may take. The end gets the
     # rest, and the room the start leaves unused. 0 keeps the end alone.
     cut_head_share: float = 0.25
+    # The state column: [L]ive, [F]ork, [D]amaged.
+    state_marks: str = "LFD"
+    state_off: str = "-"
 
     # Reading transcripts. See ``scan.read_cheap`` for what these bound.
     head_records: int = 500

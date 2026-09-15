@@ -61,6 +61,7 @@ TITLE_SHARE = 0.6
 
 # The columns of the sessions table.
 COLUMNS = {
+    "state": "Sts",
     "title": "Title",
     "last_used": "Last used",
     "size": "Size",
@@ -77,8 +78,9 @@ ENTRY_COLUMNS = {
 }
 
 # A number or a time column sorts biggest value first when its column is chosen.
+# The state column goes with them, so the live sessions come to the top.
 # The other columns do alpha sort.
-BIGGEST_FIRST = {"last_used", "size", "msgs"}
+BIGGEST_FIRST = {"state", "last_used", "size", "msgs"}
 
 # The mark on the label of the column that sorts the rows.
 SORT_MARK = {True: " ▼", False: " ▲"}
@@ -551,6 +553,10 @@ class SessionsPane(Table):
             kept, key=sort_key(self._sort_column), reverse=self._sort_descending
         )
 
+    def _state_width(self, labels: dict[str, str]) -> int:
+        """How wide the State column is."""
+        return max(len(labels["state"]), self.fmt.state_width)
+
     def _fit(self) -> tuple[int, int]:
         """How wide the Title and Project columns can be with the room on hand."""
         labels = self._labels()
@@ -558,10 +564,11 @@ class SessionsPane(Table):
         times = [len(self.fmt.timestamp(s.last_used)) for s in self._sessions]
         sizes = [len(self.fmt.size(s.size)) for s in self._sessions]
         fixed = (
-            max([len(labels["last_used"]), *times])
+            self._state_width(labels)
+            + max([len(labels["last_used"]), *times])
             + max([len(labels["size"]), *sizes])
             + len(labels["msgs"])
-            + 3 * padding
+            + 4 * padding
         )
         room = self.size.width - SCROLLBAR_WIDTH - fixed
         return flexible_widths(room, padding, self._with_project)
@@ -574,6 +581,7 @@ class SessionsPane(Table):
         self._widths = self._fit()
         title_width, project_width = self._widths
         self.clear(columns=True)
+        self.add_column(labels["state"], key="state", width=self._state_width(labels))
         self.add_column(labels["title"], key="title", width=title_width)
         self.add_column(labels["last_used"], key="last_used")
         self.add_column(Text(labels["size"], justify="right"), key="size")
@@ -582,8 +590,9 @@ class SessionsPane(Table):
             self.add_column(labels["project"], key="project", width=project_width)
         for session in self._rows():
             cells: list[Text | str] = [
+                self.fmt.marks(session),
                 Text(
-                    self.fmt.title(self.fmt.titled(session), title_width),
+                    self.fmt.title(session.title, title_width),
                     no_wrap=True,
                     overflow="ellipsis",
                 ),
