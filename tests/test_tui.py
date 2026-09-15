@@ -148,7 +148,7 @@ async def test_all_projects_shows_every_session_with_a_project_column(
         listed = rows(table)
         projects = [str(table.get_cell(sid, "project")) for sid in listed]
 
-    assert labels == ["Title", "Last used ▼", "Size", "Msgs", "Project"]
+    assert labels == ["Sts", "Title", "Last used ▼", "Size", "Msgs", "Project"]
     assert listed == [a1, a2, b1]
     assert projects == ["/p/a", "/p/a", "/p/b"]
 
@@ -169,14 +169,14 @@ async def test_choosing_a_project_shows_only_its_sessions(
         await pilot.pause()
         in_b = rows(table), app.query_one(ProjectsPane).selected_path
 
-    assert in_a == ([a1, a2], ["Title", "Last used ▼", "Size", "Msgs"], "/p/a")
+    assert in_a == ([a1, a2], ["Sts", "Title", "Last used ▼", "Size", "Msgs"], "/p/a")
     assert in_b == ([b1], "/p/b")
 
 
-async def test_the_columns_hold_title_last_used_size_and_an_empty_turn_count(
+async def test_the_columns_hold_state_title_last_used_size_and_an_empty_turn_count(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The columns hold the title, last used, size and an empty turn count."""
+    """The columns hold the state, the title, last used, size and an empty turn count."""
     sid = new_id()
     fake.transcript("/p/x", sid, session_records(sid, "/p/x", custom_title="Hello"))
     fake.sidecar("/p/x", sid, bytes_each=10)
@@ -188,10 +188,11 @@ async def test_the_columns_hold_title_last_used_size_and_an_empty_turn_count(
         table = app.query_one(SessionsPane)
         cells = [
             str(table.get_cell(sid, key))
-            for key in ("title", "last_used", "size", "msgs")
+            for key in ("state", "title", "last_used", "size", "msgs")
         ]
 
     assert cells == [
+        "---",
         "Hello",
         fmt.timestamp(session.last_used),
         fmt.size(session.size),
@@ -199,11 +200,15 @@ async def test_the_columns_hold_title_last_used_size_and_an_empty_turn_count(
     ]
 
 
-async def test_live_and_fork_marks_sit_on_the_title(
+async def test_the_state_column_holds_one_slot_for_every_state(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """Live and fork marks sit on the title."""
-    running, parent, child = new_id(), new_id(), new_id()
+    """The state column holds one slot per state, and the title keeps all its room.
+
+    A state that is on shows its letter, one that is off shows a dash. A session
+    in two states shows two letters, each in its own slot.
+    """
+    running, parent, child, twin, broken = (new_id() for _ in range(5))
     fake.transcript(
         "/p/x", running, session_records(running, "/p/x", custom_title="Run")
     )
@@ -215,17 +220,30 @@ async def test_live_and_fork_marks_sit_on_the_title(
         child,
         session_records(child, "/p/x", copied_from=parent, custom_title="Kid"),
     )
+    fake.transcript(
+        "/p/x",
+        twin,
+        session_records(twin, "/p/x", copied_from=parent, custom_title="Two"),
+    )
+    fake.marker(200, twin, 6000, name="Twin")
+    proc.stat(200, 6000)
+    fake.transcript("/p/x", broken, raw=b"\xff\xfe")
+    listed = (running, parent, child, twin, broken)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        titles = {
-            sid: str(table.get_cell(sid, "title")) for sid in (running, parent, child)
-        }
+        states = {sid: str(table.get_cell(sid, "state")) for sid in listed}
+        titles = {sid: str(table.get_cell(sid, "title")) for sid in listed[:4]}
 
-    assert titles[running] == "dev:app [live]"
-    assert titles[child] == "Kid [fork]"
-    assert titles[parent] == "Mum"
+    assert states == {
+        running: "L--",
+        parent: "---",
+        child: "-F-",
+        twin: "LF-",
+        broken: "--D",
+    }
+    assert titles == {running: "dev:app", parent: "Mum", child: "Kid", twin: "Twin"}
 
 
 async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
@@ -578,11 +596,11 @@ async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
 
     assert by_time == (
         ([a1, a2, b1], a1, ("last_used", True)),
-        ["Title", "Last used ▼", "Size", "Msgs", "Project"],
+        ["Sts", "Title", "Last used ▼", "Size", "Msgs", "Project"],
     )
     assert by_title == (
         ([b1, a1, a2], b1, ("title", False)),
-        ["Title ▲", "Last used", "Size", "Msgs", "Project"],
+        ["Sts", "Title ▲", "Last used", "Size", "Msgs", "Project"],
     )
 
 
@@ -598,7 +616,7 @@ async def test_o_orders_by_the_next_column_and_the_cursor_stays_on_its_session(
         await pilot.press("tab", "down")
         await pilot.pause()
         seen = [state(table)]
-        for key in ("o", "O", "o", "o", "o", "o"):
+        for key in ("o", "O", "o", "o", "o", "o", "o"):
             await pilot.press(key)
             await pilot.pause()
             seen.append(state(table))
@@ -610,10 +628,11 @@ async def test_o_orders_by_the_next_column_and_the_cursor_stays_on_its_session(
         ([a2, a1, b1], a2, ("size", False)),
         ([a1, a2, b1], a2, ("msgs", True)),
         ([a1, a2, b1], a2, ("project", False)),
+        ([a1, a2, b1], a2, ("state", True)),
         ([b1, a1, a2], a2, ("title", False)),
         ([a1, a2, b1], a2, ("last_used", True)),
     ]
-    assert marked == ["Title", "Last used ▼", "Size", "Msgs", "Project"]
+    assert marked == ["Sts", "Title", "Last used ▼", "Size", "Msgs", "Project"]
 
 
 async def test_the_project_column_is_skipped_by_o_when_it_is_not_on_view(
@@ -628,12 +647,12 @@ async def test_the_project_column_is_skipped_by_o_when_it_is_not_on_view(
         await pilot.press("down", "tab")
         await pilot.pause()
         seen = []
-        for _ in range(4):
+        for _ in range(5):
             await pilot.press("o")
             await pilot.pause()
             seen.append(table.sorting[0])
 
-    assert seen == ["size", "msgs", "title", "last_used"]
+    assert seen == ["size", "msgs", "state", "title", "last_used"]
 
 
 async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_round(
@@ -647,10 +666,12 @@ async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_roun
         table = app.query_one(SessionsPane)
         await pilot.press("tab", "down")
         await pilot.pause()
-        await pilot.click(SessionsPane, offset=(2, 1))
+        # The border, the State column and the paddings take the columns before
+        # this one, so x 7 is on the Title header.
+        await pilot.click(SessionsPane, offset=(7, 1))
         await pilot.pause()
         once = state(table)
-        await pilot.click(SessionsPane, offset=(2, 1))
+        await pilot.click(SessionsPane, offset=(7, 1))
         await pilot.pause()
         twice = state(table)
 
@@ -1603,10 +1624,13 @@ TALE = (
 )
 
 
-async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end_and_its_marks(
+async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """A long title is cut in the middle, by the character. Its end and its marks stay."""
+    """A long title is cut in the middle, by the character, and its end stays.
+
+    The state marks take no room from the title: they have a column of their own.
+    """
     one, two = new_id(), new_id()
     fake.transcript(
         "/p/a",
@@ -1629,14 +1653,16 @@ async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end_and_its_marks
         table = app.query_one(SessionsPane)
         width = column_width(table, "title")
         cells = [str(table.get_cell(sid, "title")) for sid in (one, two)]
+        marks = str(table.get_cell(two, "state"))
 
     assert 0 < width < len(TALE)
     assert cells == [
         fmt.title(f"{TALE}, part one", width),
-        fmt.title(f"{TALE}, part two [live]", width),
+        fmt.title(f"{TALE}, part two", width),
     ]
-    assert cells[0].endswith("part one") and cells[1].endswith("part two [live]")
+    assert cells[0].endswith("part one") and cells[1].endswith("part two")
     assert settings.cut_mark in cells[0]
+    assert marks == "L--"
 
 
 async def test_the_trash_table_cuts_a_long_title_in_the_middle_too(

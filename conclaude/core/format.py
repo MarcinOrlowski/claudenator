@@ -155,21 +155,23 @@ class Formatter:
             return f"{mark}{sep}{tail}"
         return f"{head}{sep}{mark}{sep}{tail}"
 
-    def marks(self, session: Session) -> str:
-        """The session state: live, fork, damaged."""
-        parts = []
-        if session.live:
-            parts.append("[live]")
-        if session.is_fork:
-            parts.append("[fork]")
-        if session.damaged:
-            parts.append("[damaged]")
-        return " ".join(parts)
+    @property
+    def state_width(self) -> int:
+        """The columns a state mark takes: one slot for every state."""
+        return len(self.settings.state_marks)
 
-    def titled(self, session: Session) -> str:
-        """The title with its marks after it."""
-        tag = self.marks(session)
-        return f"{session.title} {tag}" if tag else session.title
+    def marks(self, session: Session) -> str:
+        """The session state, one slot each: live, fork, damaged.
+
+        A state that is on shows its letter, one that is off shows a dash. The
+        slots stay in place, so the eye finds a letter at once: ``-F-`` is a
+        fork that is neither live nor damaged.
+        """
+        states = (session.live, session.is_fork, session.damaged)
+        return "".join(
+            mark if on else self.settings.state_off
+            for mark, on in zip(self.settings.state_marks, states)
+        )
 
     def describe(self, details: SessionDetails) -> list[tuple[str, str]]:
         """One session in full, as label and value pairs, in reading order.

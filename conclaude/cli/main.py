@@ -28,9 +28,9 @@ from conclaude.core.store import SessionStore
 TITLE_WIDTH = 48
 
 
-def titled(session: Session, fmt: Formatter) -> str:
-    """The title with its marks, cut to the table width."""
-    text = fmt.titled(session)
+def short_title(session: Session) -> str:
+    """The title, cut to the table width. The state marks have a column of their own."""
+    text = session.title
     if len(text) > TITLE_WIDTH:
         text = text[: TITLE_WIDTH - 3].rstrip() + "..."
     return text
@@ -104,18 +104,19 @@ def cmd_list(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> i
     rows = [
         (
             session.id[:8],
+            fmt.marks(session),
             fmt.timestamp(session.last_used),
             fmt.size(session.size),
-            titled(session, fmt),
+            short_title(session),
             session.project_path,
         )
         for session in sessions
     ]
-    header = ("ID", "LAST USED", "SIZE", "TITLE", "PROJECT")
-    widths = [max(len(row[i]) for row in (header, *rows)) for i in range(4)]
+    header = ("ID", "STS", "LAST USED", "SIZE", "TITLE", "PROJECT")
+    widths = [max(len(row[i]) for row in (header, *rows)) for i in range(5)]
     for row in (header, *rows):
-        cells = [row[i].ljust(widths[i]) for i in range(4)]
-        print("  ".join(cells + [row[4]]).rstrip())
+        cells = [row[i].ljust(widths[i]) for i in range(5)]
+        print("  ".join(cells + [row[5]]).rstrip())
     total = sum(session.size for session in sessions)
     noun = "session" if len(sessions) == 1 else "sessions"
     print()

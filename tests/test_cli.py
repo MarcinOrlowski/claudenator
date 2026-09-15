@@ -76,7 +76,7 @@ def test_list_table(
 
     lines = out.splitlines()
     assert code == 0
-    assert lines[0].split() == ["ID", "LAST", "USED", "SIZE", "TITLE", "PROJECT"]
+    assert lines[0].split() == ["ID", "STS", "LAST", "USED", "SIZE", "TITLE", "PROJECT"]
     assert lines[1].startswith(sid[:8])
     # The default time format is relative, and the transcript was written just now
     assert re.search(r"just now|\d+s ago", lines[1])
@@ -101,9 +101,8 @@ def test_list_marks_forks_and_damage(
     _code, out, _err = run(capsys, settings, "list")
 
     rows = {line[:8]: line for line in out.splitlines()[1:] if line.strip()}
-    assert "[fork]" in rows[child[:8]]
-    assert "[damaged]" in rows[broken[:8]]
-    assert "[" not in rows[parent[:8]].split("  ", 3)[3].split(PROJECT)[0]
+    states = {sid[:8]: rows[sid[:8]].split()[1] for sid in (parent, child, broken)}
+    assert states == {parent[:8]: "---", child[:8]: "-F-", broken[:8]: "--D"}
 
 
 def test_list_marks_live_sessions_and_uses_their_name(
@@ -127,9 +126,10 @@ def test_list_marks_live_sessions_and_uses_their_name(
     _code, json_out, _err = run(capsys, settings, "list", "--json")
 
     rows = {line[:8]: line for line in out.splitlines()[1:] if line.strip()}
-    assert "dev:app-pts3 [live]" in rows[running[:8]]
+    assert "dev:app-pts3" in rows[running[:8]]
+    assert rows[running[:8]].split()[1] == "L--"
     assert "B" in rows[stale[:8]]
-    assert "[live]" not in rows[stale[:8]]
+    assert rows[stale[:8]].split()[1] == "---"
     by_id = {row["id"]: row for row in json.loads(json_out)}
     assert by_id[running]["live"] is True
     assert by_id[running]["pid"] == 100

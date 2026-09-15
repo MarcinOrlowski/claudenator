@@ -490,6 +490,8 @@ def test_any_column_can_sort(fake: FakeClaude, settings: Settings) -> None:
     }
 
     assert [s.id for s in sessions] == [newer, older]
+    # Neither session is live, a fork or damaged, so the state leaves them be.
+    assert ordered["state"] == [newer, older]
     assert ordered["title"] == [newer, older]
     assert ordered["last_used"] == [older, newer]
     assert ordered["created"] == [older, newer]
