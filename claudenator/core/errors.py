@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -16,11 +16,11 @@ from __future__ import annotations
 from pathlib import Path
 
 
-class ConclaudeError(Exception):
+class ClaudenatorError(Exception):
     """Base for every error."""
 
 
-class SessionNotFound(ConclaudeError):
+class SessionNotFound(ClaudenatorError):
     """No session matches the id, or the prefix of an id."""
 
     def __init__(self, wanted: str) -> None:
@@ -28,7 +28,7 @@ class SessionNotFound(ConclaudeError):
         self.wanted = wanted
 
 
-class AmbiguousSessionId(ConclaudeError):
+class AmbiguousSessionId(ClaudenatorError):
     """A prefix matches more than one session."""
 
     def __init__(self, wanted: str, candidates: list[str]) -> None:
@@ -38,7 +38,7 @@ class AmbiguousSessionId(ConclaudeError):
         self.candidates = candidates
 
 
-class SessionIsLive(ConclaudeError):
+class SessionIsLive(ClaudenatorError):
     """A process is running the session right now."""
 
     def __init__(self, session_id: str, pid: int) -> None:
@@ -49,7 +49,7 @@ class SessionIsLive(ConclaudeError):
         self.pid = pid
 
 
-class TrashFailed(ConclaudeError):
+class TrashFailed(ClaudenatorError):
     """A part of a session could not be moved."""
 
     def __init__(self, session_id: str, path: Path, cause: OSError) -> None:
@@ -59,7 +59,7 @@ class TrashFailed(ConclaudeError):
         self.cause = cause
 
 
-class TrashEntryNotFound(ConclaudeError):
+class TrashEntryNotFound(ClaudenatorError):
     """No Trash entry matches the id, or the prefix of an id."""
 
     def __init__(self, wanted: str) -> None:
@@ -67,7 +67,7 @@ class TrashEntryNotFound(ConclaudeError):
         self.wanted = wanted
 
 
-class AmbiguousTrashEntry(ConclaudeError):
+class AmbiguousTrashEntry(ClaudenatorError):
     """A prefix matches more than one Trash entry."""
 
     def __init__(self, wanted: str, candidates: list[str]) -> None:
@@ -77,7 +77,7 @@ class AmbiguousTrashEntry(ConclaudeError):
         self.candidates = candidates
 
 
-class TrashEntryDamaged(ConclaudeError):
+class TrashEntryDamaged(ClaudenatorError):
     """The entry cannot be restored as it is."""
 
     def __init__(self, entry_id: str, path: Path, why: str) -> None:
@@ -87,7 +87,7 @@ class TrashEntryDamaged(ConclaudeError):
         self.why = why
 
 
-class RestoreClash(ConclaudeError):
+class RestoreClash(ClaudenatorError):
     """Something already sits where a part must go back."""
 
     def __init__(self, entry_id: str, path: Path) -> None:
@@ -96,7 +96,7 @@ class RestoreClash(ConclaudeError):
         self.path = path
 
 
-class RestoreFailed(ConclaudeError):
+class RestoreFailed(ClaudenatorError):
     """A part could not be moved back."""
 
     def __init__(self, entry_id: str, path: Path, cause: OSError) -> None:
@@ -106,7 +106,7 @@ class RestoreFailed(ConclaudeError):
         self.cause = cause
 
 
-class ScanFailed(ConclaudeError):
+class ScanFailed(ClaudenatorError):
     """A transcript could not be read to its end."""
 
     def __init__(self, session_id: str, path: Path, cause: OSError) -> None:
@@ -116,7 +116,7 @@ class ScanFailed(ConclaudeError):
         self.cause = cause
 
 
-class CacheDamaged(ConclaudeError):
+class CacheDamaged(ClaudenatorError):
     """The cache file is not a database the tool can use. Remove it and scan again."""
 
     def __init__(self, path: Path, cause: Exception) -> None:
@@ -127,7 +127,7 @@ class CacheDamaged(ConclaudeError):
         self.cause = cause
 
 
-class PurgeFailed(ConclaudeError):
+class PurgeFailed(ClaudenatorError):
     """An entry could not be removed from the disk."""
 
     def __init__(self, entry_id: str, path: Path, cause: OSError) -> None:

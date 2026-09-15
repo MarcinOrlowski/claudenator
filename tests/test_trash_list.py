@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -18,11 +18,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from conclaude.core.errors import AmbiguousTrashEntry, TrashEntryNotFound
-from conclaude.core.scan import folder_size
-from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
-from conclaude.core.trash import MANIFEST_NAME, trash_session
+from claudenator.core.errors import AmbiguousTrashEntry, TrashEntryNotFound
+from claudenator.core.scan import folder_size
+from claudenator.core.settings import Settings
+from claudenator.core.store import SessionStore
+from claudenator.core.trash import MANIFEST_NAME, trash_session
 from tests.fabricate import FakeClaude, new_id, session_records, snapshot
 
 PROJECT = "/home/u/dev/app"

@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -19,10 +19,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from conclaude.core.cache import Cache
-from conclaude.core.errors import CacheDamaged
-from conclaude.core.settings import Settings
-from conclaude.core.stats import deep_scan
+from claudenator.core.cache import Cache
+from claudenator.core.errors import CacheDamaged
+from claudenator.core.settings import Settings
+from claudenator.core.stats import deep_scan
 from tests.fabricate import FakeClaude, answer_records, dump_line, new_id, prompt_record
 
 PROJECT = "/p/x"

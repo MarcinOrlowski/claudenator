@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -29,18 +29,18 @@ from textual.pilot import Pilot
 from textual.theme import BUILTIN_THEMES
 from textual.widgets import DataTable, Static
 
-import conclaude.core.store
-import conclaude.tui.app
-from conclaude import __author__, __description__, __title__, __url__, __version__
-from conclaude.core.cache import Cache
-from conclaude.core.format import Formatter
-from conclaude.core.model import Figures, TrashEntry
-from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
-from conclaude.core.trash import trash_session
-from conclaude.tui.about import QR_BORDER, QR_ERROR, AboutScreen
-from conclaude.tui.app import ConclaudeApp, FullScreen, MainScreen, TrashScreen
-from conclaude.tui.panes import (
+import claudenator.core.store
+import claudenator.tui.app
+from claudenator import __author__, __description__, __title__, __url__, __version__
+from claudenator.core.cache import Cache
+from claudenator.core.format import Formatter
+from claudenator.core.model import Figures, TrashEntry
+from claudenator.core.settings import Settings
+from claudenator.core.store import SessionStore
+from claudenator.core.trash import trash_session
+from claudenator.tui.about import QR_BORDER, QR_ERROR, AboutScreen
+from claudenator.tui.app import ClaudenatorApp, FullScreen, MainScreen, TrashScreen
+from claudenator.tui.panes import (
     ALL_DAYS,
     ALL_PROJECTS,
     DaysPane,
@@ -94,7 +94,7 @@ def drawn_colours(table: SessionsPane, sid: str) -> set[str]:
     }
 
 
-def left_on_view(app: ConclaudeApp) -> bool:
+def left_on_view(app: ClaudenatorApp) -> bool:
     """Whether the left pane is on view.
 
     It goes out of view with the box around it, so its own ``display`` says
@@ -103,12 +103,12 @@ def left_on_view(app: ConclaudeApp) -> bool:
     return bool(app.screen.query_one("#left").display)
 
 
-def one_column(app: ConclaudeApp) -> bool:
+def one_column(app: ClaudenatorApp) -> bool:
     """Whether the panes are in one column, one over the other."""
     return "-stacked" in app.screen.query_one("#body").classes
 
 
-def pane_boxes(app: ConclaudeApp) -> tuple[Region, Region, Region]:
+def pane_boxes(app: ClaudenatorApp) -> tuple[Region, Region, Region]:
     """Where the three panes are: the left one, the table, the lower one."""
     screen = app.screen
     return (
@@ -118,7 +118,7 @@ def pane_boxes(app: ConclaudeApp) -> tuple[Region, Region, Region]:
     )
 
 
-def shown_keys(app: ConclaudeApp) -> dict[str, str]:
+def shown_keys(app: ClaudenatorApp) -> dict[str, str]:
     """What the footer lists right now: key to description."""
     return {
         key: active.binding.description
@@ -157,7 +157,7 @@ async def test_three_panes_projects_left_sessions_upper_right_details_lower_righ
 ) -> None:
     """Three panes: projects left, sessions upper right, details lower right."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         header = app.query_one(TitleBar).region
@@ -181,7 +181,7 @@ async def test_a_narrow_window_puts_the_three_panes_in_one_column(
     """A narrow window holds the panes in one column, and a wide one in two again."""
     three_sessions(fake)
     narrow = (settings.stack_panes_below - 1, 30)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.resize_terminal(*narrow)
@@ -211,7 +211,7 @@ async def test_every_pane_stays_on_view_in_the_narrowest_window(
     """No pane ever goes out of view on its own: the column holds all three."""
     three_sessions(fake)
     narrow = (settings.min_width, settings.min_height)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.resize_terminal(*narrow)
@@ -232,7 +232,7 @@ async def test_a_window_too_small_shows_a_plain_message_in_place_of_the_panes(
 ) -> None:
     """Too small to be of use: a plain message takes the place of the whole layout."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         message = app.query_one(TooSmall)
@@ -262,7 +262,7 @@ async def test_q_still_quits_while_the_window_is_too_small(
 ) -> None:
     """A window with no room for the panes does not trap the user: q still quits."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.resize_terminal(settings.min_width - 1, settings.min_height - 1)
@@ -279,7 +279,7 @@ async def test_the_focus_never_goes_missing_when_the_window_changes_size(
 ) -> None:
     """One column keeps the focus where it was. A window too small hands it to the table."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("tab")
@@ -310,7 +310,7 @@ async def test_the_widths_that_shape_the_layout_come_from_the_settings(
     three_sessions(fake)
     settings.stack_panes_below = WIDE[0] + 10
     settings.min_width = WIDE[0] - 10
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         shaped = one_column(app), left_on_view(app)
@@ -330,7 +330,7 @@ async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
     """The 'enter' key on a session opens the details full screen, and 'escape' closes them."""
     a1, _a2, _b1 = three_sessions(fake)
     narrow = (settings.stack_panes_below - 1, 20)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=narrow) as pilot:
         await pilot.pause()
         await pilot.press("enter")
@@ -354,7 +354,7 @@ async def test_in_the_trash_the_panes_follow_the_same_widths_and_enter_opens_an_
     """Trash mode takes the same shapes, and 'enter' opens one entry full screen."""
     _a1, _a2, b1 = three_sessions(fake)
     SessionStore(settings).trash(b1)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -385,7 +385,7 @@ async def test_projects_pane_lists_all_projects_first_and_hides_empty_ones(
     """Projects pane lists 'All projects' first and hides projects with no session."""
     three_sessions(fake)
     fake.project("/p/empty")
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -403,7 +403,7 @@ async def test_all_projects_shows_every_session_with_a_project_column(
 ) -> None:
     """All projects shows every session, newest first, with a Project column."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -421,7 +421,7 @@ async def test_choosing_a_project_shows_only_its_sessions(
 ) -> None:
     """Choosing a project shows only its sessions, and the Project column goes."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("shift+tab", "down")
@@ -445,7 +445,7 @@ async def test_the_columns_hold_state_title_last_used_size_and_an_empty_turn_cou
     fake.sidecar("/p/x", sid, bytes_each=10)
     session = SessionStore(settings).find_session(sid)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -492,7 +492,7 @@ async def test_the_state_column_holds_one_slot_for_every_state(
     proc.stat(200, 6000)
     fake.transcript("/p/x", broken, raw=b"\xff\xfe")
     listed = (running, parent, child, twin, broken)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -527,7 +527,7 @@ async def test_a_session_row_takes_its_colour_from_its_state(
     fake.transcript("/p/x", broken, raw=b"\xff\xfe")
     fake.transcript("/p/x", parked, session_records(parked, "/p/x"))
     listed = (broken, running, child, plain)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -564,7 +564,7 @@ async def test_a_row_holds_one_colour_only_so_the_worse_state_wins(
     fake.marker(200, broken, 6000, name="Broken")
     proc.stat(200, 6000)
     fake.transcript("/p/x", parked, session_records(parked, "/p/x"))
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -590,7 +590,7 @@ async def test_the_row_under_the_cursor_keeps_the_colours_of_the_cursor(
     broken, other = new_id(), new_id()
     fake.transcript("/p/x", broken, raw=b"\xff\xfe")
     fake.transcript("/p/x", other, session_records(other, "/p/x"))
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -619,7 +619,7 @@ async def test_the_row_colours_follow_the_theme_in_effect(
     broken, other = new_id(), new_id()
     fake.transcript("/p/x", broken, raw=b"\xff\xfe")
     fake.transcript("/p/x", other, session_records(other, "/p/x"))
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -655,7 +655,7 @@ async def test_every_theme_gives_the_states_colours_of_their_own(
     fake.transcript("/p/x", parked, session_records(parked, "/p/x"))
     listed = (broken, running, child, plain)
     seen: dict[str, set[str]] = {}
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -690,7 +690,7 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
     store = SessionStore(settings)
     session = store.find_session(sid)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(DetailsPane)
@@ -728,7 +728,7 @@ async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_no
     """
     sid = new_id()
     fake.transcript("/p/x", sid)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         text = app.query_one(DetailsPane).text
@@ -752,7 +752,7 @@ async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     )
     details = SessionStore(settings).details(child)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         text = app.query_one(DetailsPane).text
@@ -769,7 +769,7 @@ async def test_moving_the_cursor_changes_the_details(
 ) -> None:
     """Moving the cursor changes the details."""
     a1, a2, _b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("down")
@@ -788,7 +788,7 @@ async def test_the_selection_is_a_session_id_that_survives_a_change_of_project(
 ) -> None:
     """The selection is a session id, so it survives a change of project."""
     _a1, _a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -807,7 +807,7 @@ async def test_with_no_session_at_all_the_panes_are_empty_but_the_screen_works(
     fake: FakeClaude, settings: Settings
 ) -> None:
     """With no session at all the panes are empty but the screen works."""
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         prompts = [str(option.prompt) for option in app.query_one(ProjectsPane).options]
@@ -826,7 +826,7 @@ async def test_with_no_session_at_all_the_panes_are_empty_but_the_screen_works(
 
 def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
     """No key is bound on the app or the screen: every key belongs to a pane."""
-    assert "BINDINGS" not in ConclaudeApp.__dict__
+    assert "BINDINGS" not in ClaudenatorApp.__dict__
     assert "BINDINGS" not in MainScreen.__dict__
     assert "BINDINGS" not in TrashScreen.__dict__
     panes = (ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane)
@@ -844,7 +844,7 @@ async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
     and the keys of the sessions pane are the ones the footer lists.
     """
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -871,7 +871,7 @@ async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
     seen = []
     for name in ("projects", "sessions", "no such pane"):
         settings.start_pane = name
-        app = ConclaudeApp(settings)
+        app = ClaudenatorApp(settings)
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
             seen.append(type(app.focused))
@@ -885,7 +885,7 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
 ) -> None:
     """The footer lists the keys of the focused pane and follows the focus."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         focus = [type(app.focused)]
@@ -911,7 +911,7 @@ async def test_enter_on_a_project_moves_into_its_sessions(
 ) -> None:
     """The 'enter' key on a project moves into its sessions."""
     a1, _a2, _b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("shift+tab", "down", "enter")
@@ -927,7 +927,7 @@ async def test_q_quits_from_every_pane(fake: FakeClaude, settings: Settings) -> 
     """The 'q' key quits from every pane."""
     three_sessions(fake)
     for tabs in range(3):
-        app = ConclaudeApp(settings)
+        app = ClaudenatorApp(settings)
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
             await pilot.press(*(["tab"] * tabs), "q")
@@ -942,7 +942,7 @@ async def test_the_theme_in_effect_comes_from_the_settings(
 ) -> None:
     """The theme in effect comes from the settings."""
     settings.theme = "nord"
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         theme = app.theme
@@ -956,7 +956,7 @@ async def test_every_theme_the_library_ships_applies(
 ) -> None:
     """Every theme the library ships applies."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     applied = []
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
@@ -979,7 +979,7 @@ async def test_r_reloads_and_the_cursor_finds_its_session_by_id(
 ) -> None:
     """The 'r' key reloads. The cursor finds its session by id, not by row number."""
     a1, a2, _b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1008,7 +1008,7 @@ async def test_after_a_reload_a_gone_session_hands_its_row_to_the_next_one(
     """After a reload a gone session hands its row to the one that replaced it."""
     a1, a2, b1 = three_sessions(fake)
     store = SessionStore(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1032,7 +1032,7 @@ async def test_after_a_reload_a_gone_project_hands_its_line_to_the_next_one(
 ) -> None:
     """After a reload a gone project hands its line to the one that replaced it."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -1076,7 +1076,7 @@ async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
 ) -> None:
     """The rows start at last used, newest first, as the settings say."""
     a1, a2, b1 = sized_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1084,7 +1084,7 @@ async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
 
     settings.sort_column = "title"
     settings.sort_descending = False
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1105,7 +1105,7 @@ async def test_o_orders_by_the_next_column_and_the_cursor_stays_on_its_session(
 ) -> None:
     """The 'o' key orders by the next column, 'O' turns it round. The cursor keeps its session."""
     a1, a2, b1 = sized_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1136,7 +1136,7 @@ async def test_the_project_column_is_skipped_by_o_when_it_is_not_on_view(
 ) -> None:
     """The Project column is skipped by o when it is not on view."""
     sized_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1156,7 +1156,7 @@ async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_roun
 ) -> None:
     """A click on a header orders by that column. A second click turns it round."""
     a1, a2, b1 = sized_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1180,7 +1180,7 @@ async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
 ) -> None:
     """The '/' key opens a box. The sessions narrow by title as you type, case aside."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1213,7 +1213,7 @@ async def test_enter_keeps_the_filter_and_escape_on_the_pane_clears_it(
 ) -> None:
     """The 'enter' key keeps the filter and goes back to the pane. 'escape' there clears it."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1241,7 +1241,7 @@ async def test_slash_on_the_projects_pane_narrows_the_projects_by_path(
 ) -> None:
     """The '/' key on the projects pane narrows the projects by path."""
     _a1, _a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -1270,7 +1270,7 @@ async def test_a_filter_that_hides_the_cursor_session_moves_the_cursor_to_its_ro
 ) -> None:
     """A filter that hides the cursor's session moves the cursor to the row in its place."""
     a1, _a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1290,7 +1290,7 @@ def trashed(settings: Settings) -> list[str]:
     return sorted(entry.session_id for entry in SessionStore(settings).list_trash())
 
 
-def toasts(app: ConclaudeApp) -> list[tuple[str, str, str]]:
+def toasts(app: ClaudenatorApp) -> list[tuple[str, str, str]]:
     """The notifications on show: severity, title and message."""
     return [(n.severity, n.title, n.message) for n in app._notifications]
 
@@ -1300,7 +1300,7 @@ async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
 ) -> None:
     """The 'd' key moves the session under the cursor to the Trash. Its row goes. No reload."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1331,7 +1331,7 @@ async def test_repeated_d_walks_down_the_list_and_the_last_row_hands_over_upward
     a1, a2, a3 = new_id(), new_id(), new_id()
     for sid, mtime in ((a1, 3000), (a2, 2000), (a3, 1000)):
         fake.transcript("/p/a", sid, session_records(sid, "/p/a"), mtime=mtime)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1356,7 +1356,7 @@ async def test_d_has_no_effect_while_another_pane_has_the_focus(
 ) -> None:
     """The 'd' key has no effect while another pane has the focus, and is not listed there."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1391,7 +1391,7 @@ async def test_a_live_session_stays_and_the_reason_shows(
     fake.marker(100, running, 5000, name="dev:app")
     proc.stat(100, 5000)
     fake.transcript("/p/x", other, session_records(other, "/p/x"), mtime=1000)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -1416,7 +1416,7 @@ async def test_the_last_session_of_a_project_takes_the_project_with_it(
 ) -> None:
     """The last session of a project takes the project with it. The cursor moves on."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -1444,7 +1444,7 @@ async def test_in_all_projects_a_gone_project_leaves_the_cursor_where_it_is(
 ) -> None:
     """In 'All projects' a gone project leaves the cursor on the row that replaced it."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -1463,7 +1463,7 @@ async def test_with_no_row_d_is_dimmed_and_does_nothing(
     fake: FakeClaude, settings: Settings
 ) -> None:
     """With no row on view, d is dimmed in the footer and does nothing."""
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         active = app.active_bindings["d"]
@@ -1477,12 +1477,12 @@ async def test_with_no_row_d_is_dimmed_and_does_nothing(
     assert trashed(settings) == []
 
 
-def days(app: ConclaudeApp) -> list[str]:
+def days(app: ClaudenatorApp) -> list[str]:
     """The lines of the days pane, top to bottom."""
     return [str(option.prompt) for option in app.screen.query_one(DaysPane).options]
 
 
-def prompts(app: ConclaudeApp) -> list[str]:
+def prompts(app: ClaudenatorApp) -> list[str]:
     """The lines of the projects pane, top to bottom."""
     return [str(option.prompt) for option in app.screen.query_one(ProjectsPane).options]
 
@@ -1516,7 +1516,7 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
     a1, a2, b1 = three_sessions(fake)
     entry = SessionStore(settings).trash(b1)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("down")
@@ -1565,7 +1565,7 @@ async def test_the_trash_lists_its_entries_newest_first_grouped_by_day(
     """The Trash lists its entries newest first. A day on the left narrows them to it."""
     e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -1620,7 +1620,7 @@ async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
     )
     trash_session(settings, store.find_session(other), now=later - timedelta(hours=1))
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -1656,7 +1656,7 @@ async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_rel
     """U puts the entry back. Its row goes. Back with the sessions, the session is listed."""
     a1, a2, b1 = three_sessions(fake)
     entry = SessionStore(settings).trash(b1)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         before = prompts(app)
@@ -1697,7 +1697,7 @@ async def test_a_restore_blocked_by_an_occupied_path_reports_the_clash_and_chang
         "/p/a", a1, session_records(a1, "/p/a", custom_title="New"), mtime=3000
     )
     before = snapshot(settings.claude_dir), snapshot(settings.trash_dir)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t", "u")
@@ -1726,7 +1726,7 @@ async def test_x_removes_the_entry_for_good(
     """X removes the entry from the disk for good. The session does not come back."""
     a1, a2, b1 = three_sessions(fake)
     entry = SessionStore(settings).trash(a1)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t", "x")
@@ -1743,7 +1743,7 @@ async def test_x_removes_the_entry_for_good(
     assert {s.id for s in SessionStore(settings).list_sessions()} == {a2, b1}
 
 
-def titles(app: ConclaudeApp) -> tuple[str, str, str, str]:
+def titles(app: ClaudenatorApp) -> tuple[str, str, str, str]:
     """The view in the title bar, the label of the 't' key, the left pane title, the table title."""
     screen = app.screen
     return (
@@ -1759,7 +1759,7 @@ async def test_the_title_bar_names_the_view_on_the_left_and_the_tool_on_the_righ
 ) -> None:
     """The title bar names the view at the left edge, and the tool with its version at the right."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         bar = app.screen.query_one(TitleBar).region
@@ -1790,7 +1790,7 @@ async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_chan
     long_ago = datetime(2020, 1, 1, tzinfo=timezone.utc)
     old = trash_session(settings, store.find_session(b1), now=long_ago)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         at_start = titles(app)
@@ -1830,7 +1830,7 @@ async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
     store = SessionStore(settings)
     size = {s: store.find_session(s).size for s in (a1, a2, b1)}
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         all_projects = titles(app)[2:]
@@ -1871,7 +1871,7 @@ async def test_restore_and_purge_do_nothing_outside_the_trash_table(
     """U and x are not listed and do nothing outside the Trash table."""
     a1, a2, b1 = three_sessions(fake)
     entry = SessionStore(settings).trash(b1)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         seen = []
@@ -1912,7 +1912,7 @@ async def test_with_an_empty_trash_the_panes_are_empty_and_the_keys_are_dimmed(
 ) -> None:
     """With an empty Trash the panes are empty, u and x are dimmed and do nothing."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -1947,7 +1947,7 @@ async def test_the_last_entry_of_a_day_takes_the_day_with_it(
     """The last entry of a day takes the day with it. The cursor moves on to the next day."""
     e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -1979,7 +1979,7 @@ async def test_repeated_u_walks_down_the_entries_and_every_session_put_back_is_l
 ) -> None:
     """Repeated u walks down the entries. Every session put back is listed on return."""
     e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         at_start = prompts(app)
@@ -2011,7 +2011,7 @@ async def test_slash_narrows_the_entries_by_title(
 ) -> None:
     """Slash narrows the entries by title, case aside. Escape brings them all back."""
     e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t", "slash", "b")
@@ -2035,7 +2035,7 @@ async def test_r_in_trash_mode_reads_the_trash_again_and_the_cursor_keeps_its_en
     noon = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
     first = trash_session(settings, store.find_session(a2), now=noon)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -2088,7 +2088,7 @@ async def test_a_long_project_path_is_cut_in_the_middle_and_keeps_its_end(
     """
     [(one, _a), (two, _b)] = long_paths(fake, 2)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -2115,7 +2115,7 @@ async def test_the_paths_follow_the_width_of_the_projects_pane(
     """The paths are written again when the pane gets wider. The highlight stays."""
     [(one, _a), (two, b)] = long_paths(fake, 2)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -2143,7 +2143,7 @@ async def test_a_scrollbar_takes_its_columns_from_the_paths(
     """When the list needs a scrollbar, the paths leave it its columns."""
     projects = long_paths(fake, 30)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=(WIDE[0], 20)) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
@@ -2163,7 +2163,7 @@ async def test_the_project_column_cuts_a_long_path_in_the_middle_too(
     """The Project column of the sessions table cuts a long path the same way."""
     [(one, a), (two, b)] = long_paths(fake, 2)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2183,7 +2183,7 @@ async def test_the_trash_table_cuts_a_long_project_path_in_the_middle_too(
     [(one, a)] = long_paths(fake, 1)
     entry = SessionStore(settings).trash(a)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -2226,7 +2226,7 @@ async def test_a_long_title_is_cut_in_the_middle_and_keeps_its_end(
     fake.marker(100, two, 5000, name=f"{TALE}, part two")
     proc.stat(100, 5000)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2254,7 +2254,7 @@ async def test_the_trash_table_cuts_a_long_title_in_the_middle_too(
     )
     entry = SessionStore(settings).trash(sid)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("t")
@@ -2273,7 +2273,7 @@ async def test_the_about_box_names_the_tool_its_version_and_its_address(
 ) -> None:
     """The ? key opens the About box. Escape closes it and the pane has the focus back."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         before = type(app.screen), type(app.focused)
@@ -2303,7 +2303,7 @@ async def test_the_about_box_holds_a_qr_code_of_the_address(
 ) -> None:
     """The box holds the address as a QR code too, to point a phone at."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("question_mark")
@@ -2329,7 +2329,7 @@ async def test_the_about_box_fits_a_small_window_and_scrolls_in_a_smaller_one(
 ) -> None:
     """The box fits an 80x24 window whole. A window under that scrolls it."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
         await pilot.press("question_mark")
@@ -2358,7 +2358,7 @@ async def test_every_key_of_the_about_box_closes_it_and_q_does_not_quit(
 ) -> None:
     """'escape', 'enter', '?' and 'q' all close the box. In the box, 'q' closes it and stays."""
     three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     closed: list[type] = []
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
@@ -2381,7 +2381,7 @@ async def test_the_about_key_works_on_every_pane_and_in_the_trash(
     """Every pane lists the About key and opens the box with it, Trash mode too."""
     _a1, _a2, b1 = three_sessions(fake)
     SessionStore(settings).trash(b1)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     opened: list[tuple[type, type]] = []
     listed: list[str] = []
     async with app.run_test(size=WIDE) as pilot:
@@ -2421,7 +2421,7 @@ async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wr
     details = SessionStore(settings).details(sid)
     folder = str(details.session.transcript_path.parent)
     fmt = Formatter(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=(110, 24)) as pilot:
         await pilot.pause()
         pane = app.query_one(DetailsPane)
@@ -2447,7 +2447,7 @@ async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wr
 
 def test_the_stylesheet_names_no_literal_colour() -> None:
     """The stylesheet names no literal colour: only theme variables."""
-    path = Path(conclaude.tui.app.__file__).with_name(ConclaudeApp.CSS_PATH)
+    path = Path(claudenator.tui.app.__file__).with_name(ClaudenatorApp.CSS_PATH)
     text = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
     values = re.findall(r":\s*([^;{}]+);", text)
     literal = []
@@ -2491,7 +2491,7 @@ async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one
     busy_path = fake.transcript("/p/x", busy, busy_records, mtime=2000)
     fake.transcript("/p/x", unscanned, mtime=3000)
     store = SessionStore(settings)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2535,7 +2535,7 @@ def gated_scan(
     monkeypatch: pytest.MonkeyPatch, gate: threading.Event, hold: int
 ) -> list[Path]:
     """Make the deep scan wait on ``gate`` at its ``hold``-th transcript."""
-    real = conclaude.core.store.deep_scan
+    real = claudenator.core.store.deep_scan
     seen: list[Path] = []
 
     def held(path: Path, now: datetime | None = None) -> Figures:
@@ -2545,7 +2545,7 @@ def gated_scan(
             gate.wait(5)
         return real(path, now)
 
-    monkeypatch.setattr(conclaude.core.store, "deep_scan", held)
+    monkeypatch.setattr(claudenator.core.store, "deep_scan", held)
     return seen
 
 
@@ -2559,7 +2559,7 @@ async def test_s_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
     own: the details pane already holds every one of them.
     """
     a1, _a2, _b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2592,7 +2592,7 @@ async def test_s_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
     gate = threading.Event()
     gate.set()
     seen = gated_scan(monkeypatch, gate, hold=0)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         await pilot.press("s")
@@ -2616,7 +2616,7 @@ async def test_capital_s_scans_every_session_listed_and_fills_the_msgs_column(
     Every row on view fills in, and the count of what was done shows at the end.
     """
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2650,7 +2650,7 @@ async def test_the_screen_answers_keys_while_a_scan_runs_in_the_background(
     a1, a2, b1 = three_sessions(fake)
     gate = threading.Event()
     gated_scan(monkeypatch, gate, hold=1)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     try:
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
@@ -2682,7 +2682,7 @@ async def test_a_scan_cut_short_by_a_quit_leaves_the_cache_whole(
     a1, a2, _b1 = three_sessions(fake)
     gate = threading.Event()
     seen = gated_scan(monkeypatch, gate, hold=2)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     try:
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
@@ -2718,7 +2718,7 @@ async def test_a_row_never_moves_while_the_scan_runs_and_the_order_settles_at_th
         fake.transcript("/p/x", sid, records, mtime=mtime)
     gate = threading.Event()
     seen = gated_scan(monkeypatch, gate, hold=3)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     try:
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
@@ -2753,7 +2753,7 @@ async def test_a_transcript_that_will_not_read_says_why_and_the_scan_walks_on(
 ) -> None:
     """One session that fails stops itself alone. Its cell stays blank, the rest fill."""
     a1, a2, b1 = three_sessions(fake)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2786,7 +2786,7 @@ async def test_a_scan_does_not_pull_the_list_from_under_the_cursor(
     for index in range(20):
         sid = new_id()
         fake.transcript("/p/x", sid, session_records(sid, "/p/x"), mtime=1000 + index)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=(120, 16)) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
@@ -2817,7 +2817,7 @@ async def test_a_change_of_width_keeps_the_rows_on_view_where_they_are(
     for index in range(20):
         sid = new_id()
         fake.transcript("/p/x", sid, session_records(sid, "/p/x"), mtime=1000 + index)
-    app = ConclaudeApp(settings)
+    app = ClaudenatorApp(settings)
     async with app.run_test(size=(120, 16)) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)

@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 
@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from conclaude.core.settings import Settings
+from claudenator.core.settings import Settings
 
 MARKER_NAME = re.compile(r"^(\d+)\.json$")
 

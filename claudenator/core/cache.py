@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -19,9 +19,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from conclaude.core.errors import CacheDamaged
-from conclaude.core.model import Figures
-from conclaude.core.settings import Settings
+from claudenator.core.errors import CacheDamaged
+from claudenator.core.model import Figures
+from claudenator.core.settings import Settings
 
 # One row per transcript, found by its path. The size and change time say
 # which copy of the file the row describes. The row holds our own numbers

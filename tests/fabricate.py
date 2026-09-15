@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -21,7 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Iterable
 
-from conclaude.core.settings import Settings
+from claudenator.core.settings import Settings
 
 STARTED = "2026-09-14T07:18:50.439Z"
 

@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -25,15 +25,15 @@ from pathlib import Path
 
 import pytest
 
-from conclaude.core.errors import (
+from claudenator.core.errors import (
     RestoreClash,
     RestoreFailed,
     TrashEntryDamaged,
     TrashEntryNotFound,
 )
-from conclaude.core.settings import Settings
-from conclaude.core.store import SessionStore
-from conclaude.core.trash import MANIFEST_NAME, restore_entry
+from claudenator.core.settings import Settings
+from claudenator.core.store import SessionStore
+from claudenator.core.trash import MANIFEST_NAME, restore_entry
 from tests.fabricate import FakeClaude, encode_project, new_id, snapshot
 from tests.test_trash import other_filesystem
 
@@ -389,7 +389,7 @@ def test_a_restore_across_filesystems_copies_then_removes(
     elsewhere = other_filesystem(settings.claude_dir)
     if elsewhere is None:
         pytest.skip("no second filesystem to move to")
-    settings.data_dir = Path(tempfile.mkdtemp(prefix="conclaude-", dir=elsewhere))
+    settings.data_dir = Path(tempfile.mkdtemp(prefix="claudenator-", dir=elsewhere))
     try:
         sid = new_id()
         fake.every_part(PROJECT, sid)

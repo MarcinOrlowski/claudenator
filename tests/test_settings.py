@@ -1,12 +1,12 @@
 """
 ##################################################################################
 #
-# conClaude by Marcin Orlowski
+# Claudenator by Marcin Orlowski
 # The only Claude Code session manager you need.
 #
 # @author    Marcin Orlowski <mail@marcinOrlowski.com>
 # Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
-# @link      https://github.com/MarcinOrlowski/conclaude
+# @link      https://github.com/MarcinOrlowski/claudenator
 #
 ##################################################################################
 """
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from conclaude.core.settings import Settings
+from claudenator.core.settings import Settings
 
 
 def test_defaults_give_the_three_roots(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -28,7 +28,7 @@ def test_defaults_give_the_three_roots(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = Settings()
 
     assert settings.claude_dir == Path.home() / ".claude"
-    assert settings.data_dir == Path.home() / ".local" / "share" / "conclaude"
+    assert settings.data_dir == Path.home() / ".local" / "share" / "claudenator"
     assert settings.proc_dir == Path("/proc")
 
 
@@ -67,7 +67,7 @@ def test_xdg_data_home_is_honoured(
     """Xdg data home is honoured."""
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg"))
 
-    assert Settings().data_dir == tmp_path / "xdg" / "conclaude"
+    assert Settings().data_dir == tmp_path / "xdg" / "claudenator"
 
 
 def test_screen_defaults_are_present() -> None:
