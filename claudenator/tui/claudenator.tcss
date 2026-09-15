@@ -175,7 +175,7 @@ ConfirmScreen {
     border-title-color: $text;
 }
 
-/* The thing the question is about. It never wraps: a long title is cut. */
+/* The thing the question is about. It never wraps */
 #confirm-subject {
     width: 1fr;
     padding: 1 0;
@@ -195,14 +195,10 @@ ConfirmScreen {
     margin: 0 0 0 1;
 }
 
-/* The settings box sits in the middle of the window, over the panes, so that
-   every change the user makes is on view behind it at once. */
 SettingsScreen {
     align: center middle;
 }
 
-/* One size for every section, so that the box holds still as the user moves
-   from one to the next. A window with less room than this shrinks it. */
 #settings {
     width: 68;
     height: 17;
@@ -218,7 +214,7 @@ SettingsScreen {
     height: 1fr;
 }
 
-/* The options of one section. It scrolls when the section is a long one. */
+/* The options of one section. */
 .option-page {
     height: 1fr;
     padding: 0 1;
@@ -229,13 +225,12 @@ SettingsScreen {
     width: 1fr;
 }
 
-/* A switch is as wide as a switch. Only a list or a box takes the full room. */
+/* A switch is as wide as a switch. */
 .option-row Switch {
     width: auto;
 }
 
-/* As wide as the longest name, so that every way to change an option starts
-   at the same column. The name sits on the middle line of its row. */
+/* As wide as the longest name. */
 .option-label {
     width: 26;
     height: 3;
@@ -246,9 +241,6 @@ SettingsScreen {
     width: 1fr;
 }
 
-/* At the foot of the box, under every section, so they are always on view.
-   'Reset all' stands apart at the left: it acts on the options, and the three
-   at the right end the box. */
 #settings-buttons {
     dock: bottom;
     height: 3;

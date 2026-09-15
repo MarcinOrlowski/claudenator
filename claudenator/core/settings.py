@@ -75,7 +75,6 @@ class Settings:
     min_width: int = 30
     min_height: int = 12
     confirm_delete: bool = False
-    # A purge cannot be undone, so this one starts on.
     confirm_purge: bool = True
 
     # How to format dates. See ``format.Formatter``. Where the time goes decides

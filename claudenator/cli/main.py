@@ -91,10 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def settings_from(args: argparse.Namespace) -> tuple[Settings, list[str]]:
-    """A settings object, and a note for every fault in the settings file.
-
-    The file goes in first, the command line on top of it, so a flag wins.
-    """
+    """A settings object, and a note for every fault in the settings file."""
     settings = Settings()
     notes = apply_file(settings)
     if args.claude_dir is not None:

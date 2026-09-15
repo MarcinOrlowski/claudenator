@@ -40,10 +40,8 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
 
 @pytest.fixture(autouse=True)
 def config_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the settings file at the temporary directory, for every test.
+    """Point the settings file at the temporary directory, for tests"""
 
-    No test ever reads, or writes, the settings file of whoever runs it.
-    """
     home = tmp_path / "xdg-config"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(home))
     return home

@@ -80,12 +80,11 @@ def test_screen_defaults_are_present() -> None:
     assert settings.sort_descending is True
     assert settings.projects_pane_min_width < settings.projects_pane_max_width
     assert 0 < settings.projects_pane_min_height
-    # The window shrinks through both steps in turn: the panes go in one column,
-    # and only then a message takes the place of them all.
+    # The window shrinks through both steps in turn: the panes go in one column
     assert settings.min_width < settings.stack_panes_below
     assert 0 < settings.min_height
     assert settings.confirm_delete is False
-    # A purge cannot be undone, so that one asks first.
+    # Enabled by default as purge cannot be undone.
     assert settings.confirm_purge is True
     assert settings.list_time_format == "relative"
     assert settings.details_time_format == "both"

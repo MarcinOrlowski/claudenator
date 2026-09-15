@@ -21,11 +21,7 @@ from textual.widgets import Button, Footer, Static
 
 
 class ConfirmScreen(ModalScreen[bool]):
-    """A question with two answers, over the panes.
-
-    Only a yes is a yes. 'escape', a click on No, and any other way out of the
-    box all answer no, so nothing goes by a press the user did not mean.
-    """
+    """A question with two answers"""
 
     BINDINGS = [
         Binding("y", "yes", "Yes"),

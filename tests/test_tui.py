@@ -3305,11 +3305,7 @@ async def test_apply_writes_the_file_and_the_box_stays_open(
 async def test_cancel_after_apply_goes_back_to_the_applied_state(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Cancel after Apply goes back to the applied state, not to the one before it.
-
-    Apply is the point the box goes back to. What came after it goes, and what
-    Apply kept stays, on the screen and in the file.
-    """
+    """Cancel after Apply goes back to the applied state"""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -3414,7 +3410,7 @@ async def test_a_no_leaves_the_session_where_it_is(
 async def test_d_does_not_ask_when_the_settings_do_not_say_so(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 'd' key does not ask when the settings do not say so. That is the default."""
+    """The 'd' key does not ask when the setting is OFF. That is the default."""
     a1, a2, b1 = three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:

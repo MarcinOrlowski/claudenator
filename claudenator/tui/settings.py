@@ -54,10 +54,8 @@ def slug(group: str) -> str:
 
 
 def as_value(option: Option, raw: Value) -> Value | None:
-    """What the user chose or typed, as the option can hold it, or None.
+    """What the user chose or typed"""
 
-    A box hands back a text, even for a number, so a number is made from it here.
-    """
     kind = kind_of(option.name)
     if kind is not str and isinstance(raw, str):
         try:
@@ -72,11 +70,7 @@ class SettingsChanged(Message):
 
 
 class OptionInput(Input):
-    """The box where a number or a free text is typed.
-
-    The library gives 'ctrl+d' to this box. The screen needs that key, so this
-    box hands it back. 'delete' still takes out the character on the right.
-    """
+    """Input for free text or numbers"""
 
     BINDINGS = [Binding("ctrl+d", "screen.reset_one", "Default", show=False)]
 
@@ -146,12 +140,7 @@ class OptionRow(Horizontal):
 
 
 class SettingsScreen(ModalScreen[bool]):
-    """The settings box: every option the user may change, in sections.
-
-    Every change takes effect as the user makes it, behind the box, so the
-    theme and the layout are on view before the user keeps them. Save and
-    Apply both write the file. Cancel goes back to the last applied state.
-    """
+    """The settings box"""
 
     BINDINGS = [
         Binding("ctrl+s", "save", "Save"),
@@ -197,10 +186,7 @@ class SettingsScreen(ModalScreen[bool]):
             self.dismiss(True)
 
     def action_apply(self) -> None:
-        """Apply: the file is written, and the box stays open.
-
-        The applied state moves here, so a Cancel after this changes nothing.
-        """
+        """Apply: the file is written, and the box stays open."""
         if self._write():
             self.applied = values_of(self.settings)
 
@@ -226,10 +212,8 @@ class SettingsScreen(ModalScreen[bool]):
         tabs.active = names[(here + 1) % len(names)]
 
     def action_reset_all(self) -> None:
-        """Reset all: every option goes back to its default.
+        """Reset every option goes back to its default."""
 
-        It takes effect like any other change, so Cancel still undoes it.
-        """
         for row in self.query(OptionRow):
             self._put_default(row)
         self._tell()
@@ -257,7 +241,7 @@ class SettingsScreen(ModalScreen[bool]):
         self._take(event.select, str(event.value))
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        """A number or a text was typed. A half-typed number is never taken."""
+        """A number or a text was typed."""
         event.stop()
         result = event.validation_result
         if result is not None and not result.is_valid:
@@ -265,7 +249,7 @@ class SettingsScreen(ModalScreen[bool]):
         self._take(event.input, event.value)
 
     def _choices(self, option: Option) -> tuple[str, ...]:
-        """What one option may hold. The themes are the app's own list."""
+        """What one option may hold."""
         if option.name == THEME:
             return tuple(self.app.available_themes)
         return option.choices

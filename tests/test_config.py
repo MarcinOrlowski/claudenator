@@ -146,11 +146,8 @@ def test_a_name_that_is_not_an_option_is_left_out(settings: Settings) -> None:
 
 
 def test_the_file_holds_every_option(settings: Settings) -> None:
-    """The file holds every option.
+    """The file holds every option."""
 
-    A value at its default is written too. That locks it: a later release may
-    change a default, and the file keeps the one the user saved.
-    """
     settings.theme = "nord"
 
     text = dump(settings)

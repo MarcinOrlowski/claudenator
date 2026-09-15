@@ -259,11 +259,8 @@ def as_toml(value: Value) -> str:
 
 
 def dump(settings: Settings) -> str:
-    """Every option as it stands now, in sections, as the settings screen lists them.
+    """Every option as it stands now"""
 
-    A value at its default goes in the file like any other. That is what locks
-    it: a later release may change a default, and the file holds the user's.
-    """
     lines: list[str] = list(HEADER)
     for group in groups():
         lines.append(f"# {group}")
@@ -276,10 +273,8 @@ def dump(settings: Settings) -> str:
 
 
 def save_file(settings: Settings) -> Path:
-    """Write the settings file. Returns the file written.
+    """Write the settings file."""
 
-    The folder is made when it is not there. Nothing but this writes the file.
-    """
     path = settings.config_file
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
