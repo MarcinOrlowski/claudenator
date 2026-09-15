@@ -20,7 +20,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen, ScreenResultType
 from textual.widget import Widget
-from textual.widgets import Footer, Header
+from textual.widgets import Footer
 
 from conclaude import __title__
 from conclaude.core.errors import ConclaudeError
@@ -40,7 +40,9 @@ from conclaude.tui.panes import (
     ProjectsPane,
     SessionsPane,
     Table,
+    TitleBar,
     TooSmall,
+    label_trash_key,
 )
 
 
@@ -56,7 +58,7 @@ class FullScreen(ModalScreen[None]):
     """One session, or one Trash entry, in full over the whole window.
 
     A small pane cuts a long line to fit. This box gives the same lines the
-    whole window. The arrow keys scroll it, and escape closes it.
+    whole window. The arrow keys scroll it, and 'escape' closes it.
     """
 
     BINDINGS = [
@@ -173,9 +175,9 @@ class PaneScreen(Screen[ScreenResultType]):
             return
         self.query_one(Table).focus()
 
-    def _show_trash_total(self, entries: list[TrashEntry]) -> None:
-        """The header says what the Trash holds now."""
-        self.app.sub_title = self.fmt.trash_line(entries)
+    def _show_trash(self, entries: list[TrashEntry]) -> None:
+        """The 't' key says how much the Trash holds now."""
+        label_trash_key(self, self.fmt.trash_key(entries))
 
 
 class MainScreen(PaneScreen[None]):
@@ -189,7 +191,7 @@ class MainScreen(PaneScreen[None]):
         self._trash: list[TrashEntry] = []
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield TitleBar("Sessions")
         with Horizontal(id="body"):
             with Vertical(id="left"):
                 projects = ProjectsPane(self.fmt)
@@ -220,7 +222,7 @@ class MainScreen(PaneScreen[None]):
         self._by_id = {session.id: session for session in self._sessions}
         self._details.clear()
         self._trash = self.store.list_trash()
-        self._show_trash_total(self._trash)
+        self._show_trash(self._trash)
         self.query_one(ProjectsPane).show(projects_of(self._sessions))
 
     def action_reload(self) -> None:
@@ -228,7 +230,7 @@ class MainScreen(PaneScreen[None]):
         self.load()
 
     def action_trash_mode(self) -> None:
-        """The t key: the panes switch to the Trash."""
+        """The 't' key: the panes switch to the Trash."""
         self.app.push_screen(TrashScreen(self.store, self.fmt), self._back_from_trash)
 
     def on_projects_pane_chosen(self, event: ProjectsPane.Chosen) -> None:
@@ -240,7 +242,7 @@ class MainScreen(PaneScreen[None]):
         self.query_one(SessionsPane).show(shown, with_project=event.path is None)
 
     def on_projects_pane_opened(self) -> None:
-        """Enter on a project moves the user into its sessions."""
+        """The 'enter' key on a project moves the user into its sessions."""
         self.query_one(SessionsPane).focus()
 
     def on_sessions_pane_chosen(self, event: SessionsPane.Chosen) -> None:
@@ -249,7 +251,7 @@ class MainScreen(PaneScreen[None]):
         self.query_one(DetailsPane).show(self._details_of(session))
 
     def on_sessions_pane_opened(self, event: SessionsPane.Opened) -> None:
-        """Enter on a session: its details take the whole window.
+        """The 'enter' key on a session: its details take the whole window.
 
         This is the way to the details in a window too narrow to hold the pane.
         """
@@ -260,7 +262,7 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_trash_wanted(self, event: SessionsPane.TrashWanted) -> None:
-        """The d key: the session goes to the Trash and its row goes from the table.
+        """The 'd' key: the session goes to the Trash and its row goes from the table.
 
         Nothing reloads. A session that will not go, a live one for instance,
         stays where it is and the reason shows in a notification.
@@ -272,7 +274,7 @@ class MainScreen(PaneScreen[None]):
             self.notify(str(error), title="Not trashed", severity="error")
             return
         self._trash.insert(0, entry)
-        self._show_trash_total(self._trash)
+        self._show_trash(self._trash)
         self._forget(session)
 
     def _back_from_trash(self, visit: TrashVisit | None) -> None:
@@ -280,7 +282,7 @@ class MainScreen(PaneScreen[None]):
         if visit is None:
             return
         self._trash = visit.entries
-        self._show_trash_total(self._trash)
+        self._show_trash(self._trash)
         if not visit.restored:
             return
         for session in visit.restored:
@@ -322,7 +324,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self._restored: list[Session] = []
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield TitleBar("Trash")
         with Horizontal(id="body"):
             with Vertical(id="left"):
                 yield DaysPane(self.fmt)
@@ -344,7 +346,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         """Read the Trash again and fill the panes."""
         self._entries = self.store.list_trash()
         self._by_id = {entry.id: entry for entry in self._entries}
-        self._show_trash_total(self._entries)
+        self._show_trash(self._entries)
         self.query_one(DaysPane).show(self._entries)
 
     def action_reload(self) -> None:
@@ -352,7 +354,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self.load()
 
     def action_sessions_mode(self) -> None:
-        """The t key: the panes switch back to the sessions."""
+        """The 't' key: the panes switch back to the sessions."""
         self.dismiss(TrashVisit(self._entries, self._restored))
 
     def on_days_pane_chosen(self, event: DaysPane.Chosen) -> None:
@@ -366,7 +368,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self.query_one(EntriesPane).show(shown)
 
     def on_days_pane_opened(self) -> None:
-        """Enter on a day moves the user into its entries."""
+        """The 'enter' key on a day moves the user into its entries."""
         self.query_one(EntriesPane).focus()
 
     def on_entries_pane_chosen(self, event: EntriesPane.Chosen) -> None:
@@ -375,7 +377,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self.query_one(EntryPane).show(entry)
 
     def on_entries_pane_opened(self, event: EntriesPane.Opened) -> None:
-        """Enter on an entry: it takes the whole window, pane or no pane."""
+        """The 'enter' key on an entry: it takes the whole window, pane or no pane."""
         self.app.push_screen(
             FullScreen("Entry", self.fmt, self.fmt.describe_entry(event.entry))
         )
@@ -407,7 +409,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         """Take one entry off the screen"""
         self._entries = [e for e in self._entries if e.id != entry.id]
         self._by_id.pop(entry.id, None)
-        self._show_trash_total(self._entries)
+        self._show_trash(self._entries)
         self.query_one(EntriesPane).drop(entry.id)
         day = self.fmt.day(entry.trashed_at)
         if not any(self.fmt.day(e.trashed_at) == day for e in self._entries):

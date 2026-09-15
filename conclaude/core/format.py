@@ -37,6 +37,13 @@ def parts_that_fit(parts: Sequence[str], sep: str, room: int) -> int:
     return count
 
 
+def plural(noun: str) -> str:
+    """The English plural of a noun the tool uses: ``entry`` to ``entries``."""
+    if noun.endswith("y"):
+        return noun[:-1] + "ies"
+    return noun + "s"
+
+
 class Formatter:
     """Helper to format values in human friendly form."""
 
@@ -214,13 +221,25 @@ class Formatter:
         lines.append(("Damaged", "yes" if session.damaged else "no"))
         return lines
 
-    def trash_line(self, entries: list[TrashEntry]) -> str:
-        """Info line about the trash content: ``Trash: 3 entries, 12.3M``."""
-        if not entries:
-            return "Trash: empty"
-        noun = "entry" if len(entries) == 1 else "entries"
-        total = sum(entry.size for entry in entries)
-        return f"Trash: {len(entries)} {noun}, {self.size(total)}"
+    def counted(self, name: str, count: int) -> str:
+        """A pane title with the count of what it shows: ``Projects (3)``, or ``(empty)``."""
+        return f"{name} ({count})" if count else f"{name} (empty)"
+
+    def summary(self, name: str, noun: str, sizes: Sequence[int]) -> str:
+        """A pane title with a count and a total: ``Trash (3 entries, 12.3M total)``.
+
+        ``noun`` names one of the things, ``session`` or ``entry``. Its plural
+        follows English. One size per thing on view; none gives ``(empty)``.
+        """
+        if not sizes:
+            return f"{name} (empty)"
+        count = len(sizes)
+        word = noun if count == 1 else plural(noun)
+        return f"{name} ({count} {word}, {self.size(sum(sizes))} total)"
+
+    def trash_key(self, entries: list[TrashEntry]) -> str:
+        """The label of the key that opens the Trash: ``Trash (3)``, or ``Trash`` when empty."""
+        return f"Trash ({len(entries)})" if entries else "Trash"
 
     def describe_entry(self, entry: TrashEntry) -> list[tuple[str, str]]:
         """One Trash entry"""

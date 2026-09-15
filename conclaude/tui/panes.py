@@ -13,16 +13,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import replace
+
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.content import Content
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import DataTable, Input, OptionList, Static
 from textual.widgets.option_list import Option, OptionDoesNotExist
 
+from conclaude import __title__, __version__
 from conclaude.core.format import Formatter
 from conclaude.core.model import Project, Session, SessionDetails, TrashEntry
 from conclaude.core.store import sort_key
@@ -39,6 +43,23 @@ SHARED_BINDINGS = [
 # The key that switches between the sessions and the Trash view.
 TO_TRASH = Binding("t", "screen.trash_mode", "Trash")
 TO_SESSIONS = Binding("t", "screen.sessions_mode", "Sessions")
+
+
+def label_trash_key(screen: Widget, label: str) -> None:
+    """Put ``label`` on the key that opens the Trash, on every pane under ``screen``.
+
+    The footer takes a key's label from the binding map of the pane that has the
+    focus, and the library gives no public way to change a label once the pane
+    is up. So this puts a copy of the binding, with the new label, into the map
+    of every pane that has the key. ``refresh_bindings`` makes the footer redraw.
+    """
+    binding = replace(TO_TRASH, description=label)
+    for pane in screen.query(Widget):
+        bindings = pane._bindings.key_to_bindings
+        if any(b.action == TO_TRASH.action for b in bindings.get(TO_TRASH.key, ())):
+            bindings[TO_TRASH.key] = [binding]
+            pane.refresh_bindings()
+
 
 # The keys of a pane that can narrow its list to a typed text
 FILTER_BINDINGS = [
@@ -127,11 +148,11 @@ class Filterable:
         return self._filter.casefold() in line.casefold()
 
     def action_filter(self) -> None:
-        """Slash: the user wants to type a filter."""
+        """The '/' key: the user wants to type a filter."""
         self.post_message(FilterWanted(self))
 
     def action_clear_filter(self) -> None:
-        """Escape: the list goes back to full."""
+        """The 'escape' key: the list goes back to full."""
         self.post_message(FilterWanted(self, clear=True))
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
@@ -144,8 +165,8 @@ class Filterable:
 class FilterBox(Input):
     """The line under a pane where the user types its filter.
 
-    Shown while the user types, and while a filter is in effect. ENTER
-    goes back to the pane and keeps the filter. ESC drops filter and goes back.
+    Shown while the user types, and while a filter is in effect. 'enter'
+    goes back to the pane and keeps the filter. 'escape' drops it and goes back.
     """
 
     BINDINGS = [
@@ -167,7 +188,7 @@ class FilterBox(Input):
         self.cursor_position = len(self.value)
 
     def action_cancel(self) -> None:
-        """Escape: the filter goes, the pane gets the focus back."""
+        """The 'escape' key: the filter goes, the pane gets the focus back."""
         self.value = ""
         self._close()
 
@@ -177,7 +198,7 @@ class FilterBox(Input):
         self.pane.set_filter(event.value)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Enter: the filter stays, the pane gets the focus back."""
+        """The 'enter' key: the filter stays, the pane gets the focus back."""
         event.stop()
         self._close()
 
@@ -206,11 +227,13 @@ class Lister(OptionList):
             self.key = key
 
     class Opened(Message):
-        """The user pressed enter on a line: they want to work on what it holds."""
+        """The user pressed 'enter' on a line: they want to work on what it holds."""
 
-    def __init__(self, id: str, title: str) -> None:
+    def __init__(self, id: str, title: str, fmt: Formatter) -> None:
         super().__init__(id=id)
         self.border_title = title
+        self.fmt = fmt
+        self._title = title
         self._selected: str | None = None
 
     def on_option_list_option_highlighted(
@@ -222,7 +245,7 @@ class Lister(OptionList):
         self.post_message(self.Chosen(event.option_id))
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        """Enter on a line."""
+        """The 'enter' key on a line."""
         event.stop()
         self.post_message(self.Opened())
 
@@ -239,7 +262,8 @@ class Lister(OptionList):
                 )
 
     def _refill(self, first: str, ids: list[str]) -> None:
-        """Put the lines back: the 'all' line, then one per id."""
+        """Put the lines back: the 'all' line, then one per id. The title counts them."""
+        self.border_title = self.fmt.counted(self._title, len(ids))
         wanted = self._selected
         index = self.highlighted or 0
         self.clear_options()
@@ -274,11 +298,10 @@ class ProjectsPane(Filterable, Lister):
             self.path = path
 
     class Opened(Lister.Opened):
-        """The user pressed enter on a project: they want to work on its sessions."""
+        """The user pressed 'enter' on a project: they want to work on its sessions."""
 
     def __init__(self, fmt: Formatter) -> None:
-        super().__init__("projects", "Projects")
-        self.fmt = fmt
+        super().__init__("projects", "Projects", fmt)
         self._projects: list[Project] = []
         # The columns one line has for its path. Unknown until the first resize.
         self._room = 0
@@ -334,11 +357,10 @@ class DaysPane(Lister):
             self.day = day
 
     class Opened(Lister.Opened):
-        """The user pressed enter on a day: they want to work on its entries."""
+        """The user pressed 'enter' on a day: they want to work on its entries."""
 
     def __init__(self, fmt: Formatter) -> None:
-        super().__init__("days", "Days")
-        self.fmt = fmt
+        super().__init__("days", "Days", fmt)
         self._days: list[str] = []
 
     @property
@@ -365,6 +387,8 @@ class Table(Filterable, DataTable):
 
     # The actions that need a row under the cursor. They dim with an empty table.
     ROW_ACTIONS: frozenset[str] = frozenset()
+    # What one row is, for the title: ``session`` or ``entry``.
+    NOUN = "row"
 
     class Chosen(Message):
         """The cursor moved to a row, or the table went empty (``None``)."""
@@ -377,6 +401,7 @@ class Table(Filterable, DataTable):
         super().__init__(id=id, cursor_type="row")
         self.border_title = title
         self.fmt = fmt
+        self._title = title
         self._selected: str | None = None
         self._widths: tuple[int, int] = (0, 0)
 
@@ -389,7 +414,17 @@ class Table(Filterable, DataTable):
         """Take one row out of the table in place."""
         if self.rows.get(key) is not None:
             self.remove_row(key)
+        self._retitle()
         self._announce()
+
+    def _rows(self) -> Sequence[Session | TrashEntry]:
+        """The rows on view: the filter in effect, in the order in effect."""
+        raise NotImplementedError
+
+    def _retitle(self) -> None:
+        """The title counts the rows on view and sums their size."""
+        sizes = [row.size for row in self._rows()]
+        self.border_title = self.fmt.summary(self._title, self.NOUN, sizes)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Dim the keys that need a row while there is none to act on."""
@@ -438,6 +473,7 @@ class SessionsPane(Table):
         Binding("enter", "open", "Details"),
     ]
     ROW_ACTIONS = frozenset({"trash", "open"})
+    NOUN = "session"
 
     class Chosen(Table.Chosen):
         """The cursor moved to a session, or the table went empty (``None``)."""
@@ -454,7 +490,7 @@ class SessionsPane(Table):
             self.session = session
 
     class Opened(Message):
-        """The user pressed enter: they want this session in full, over the window."""
+        """The user pressed 'enter': they want this session in full, over the window."""
 
         def __init__(self, session: Session) -> None:
             super().__init__()
@@ -498,13 +534,13 @@ class SessionsPane(Table):
         super().drop(session_id)
 
     def action_trash(self) -> None:
-        """The d key: ask for the session under the cursor to go to the Trash."""
+        """The 'd' key: ask for the session under the cursor to go to the Trash."""
         session = self.selected
         if session is not None:
             self.post_message(self.TrashWanted(session))
 
     def action_open(self) -> None:
-        """The enter key: ask for the session under the cursor in full."""
+        """The 'enter' key: ask for the session under the cursor in full."""
         session = self.selected
         if session is not None:
             self.post_message(self.Opened(session))
@@ -523,7 +559,7 @@ class SessionsPane(Table):
             self._rebuild()
 
     def action_sort_next(self) -> None:
-        """The o key: order by the next column along."""
+        """The 'o' key: order by the next column along."""
         shown = self._shown_columns()
         try:
             index = shown.index(self._sort_column)
@@ -532,7 +568,7 @@ class SessionsPane(Table):
         self.sort_by(shown[(index + 1) % len(shown)])
 
     def action_sort_reverse(self) -> None:
-        """The O key: the same column, the other way round."""
+        """The 'O' key: the same column, the other way round."""
         self.sort_by(self._sort_column, not self._sort_descending)
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -625,6 +661,7 @@ class SessionsPane(Table):
                 )
             self.add_row(*cells, key=session.id)
         self._place_cursor(wanted, index)
+        self._retitle()
 
 
 class EntriesPane(Table):
@@ -639,6 +676,7 @@ class EntriesPane(Table):
         Binding("enter", "open", "Entry"),
     ]
     ROW_ACTIONS = frozenset({"restore", "purge", "open"})
+    NOUN = "entry"
 
     class Chosen(Table.Chosen):
         """The cursor moved to an entry, or the table went empty (``None``)."""
@@ -662,7 +700,7 @@ class EntriesPane(Table):
             self.entry = entry
 
     class Opened(Message):
-        """The user pressed enter: they want this entry in full, over the window."""
+        """The user pressed 'enter': they want this entry in full, over the window."""
 
         def __init__(self, entry: TrashEntry) -> None:
             super().__init__()
@@ -693,19 +731,19 @@ class EntriesPane(Table):
         super().drop(entry_id)
 
     def action_restore(self) -> None:
-        """The u key: ask for the entry under the cursor to go back."""
+        """The 'u' key: ask for the entry under the cursor to go back."""
         entry = self.selected
         if entry is not None:
             self.post_message(self.RestoreWanted(entry))
 
     def action_purge(self) -> None:
-        """The x key: ask for the entry under the cursor to leave the disk."""
+        """The 'x' key: ask for the entry under the cursor to leave the disk."""
         entry = self.selected
         if entry is not None:
             self.post_message(self.PurgeWanted(entry))
 
     def action_open(self) -> None:
-        """The enter key: ask for the entry under the cursor in full."""
+        """The 'enter' key: ask for the entry under the cursor in full."""
         entry = self.selected
         if entry is not None:
             self.post_message(self.Opened(entry))
@@ -760,6 +798,7 @@ class EntriesPane(Table):
                 key=entry.id,
             )
         self._place_cursor(wanted, index)
+        self._retitle()
 
 
 class Lines(VerticalScroll):
@@ -851,3 +890,21 @@ class TooSmall(Static):
             markup=False,
         )
         self.display = False
+
+
+class TitleBar(Horizontal):
+    """The top line: the view on the left, the tool and its version on the right.
+
+    The view says where the user is, ``Sessions`` or ``Trash``. What the view
+    holds is on the panes, in their titles, not here.
+    """
+
+    BRAND = f"{__title__} v{__version__}"
+
+    def __init__(self, view: str) -> None:
+        super().__init__(id="title-bar")
+        self.view = view
+
+    def compose(self) -> ComposeResult:
+        yield Static(self.view, id="view", markup=False)
+        yield Static(self.BRAND, id="brand", markup=False)

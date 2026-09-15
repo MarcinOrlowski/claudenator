@@ -22,7 +22,7 @@ from textual.color import Color, ColorParseError
 from textual.containers import VerticalScroll
 from textual.geometry import Region
 from textual.theme import BUILTIN_THEMES
-from textual.widgets import DataTable, Header, Static
+from textual.widgets import DataTable, Static
 
 import conclaude.tui.app
 from conclaude import __author__, __description__, __title__, __url__, __version__
@@ -42,9 +42,11 @@ from conclaude.tui.panes import (
     EntryPane,
     FilterBox,
     Lines,
+    Lister,
     ProjectsPane,
     SessionsPane,
     Table,
+    TitleBar,
     TooSmall,
 )
 from tests.fabricate import FakeClaude, FakeProc, new_id, session_records, snapshot
@@ -128,7 +130,7 @@ async def test_three_panes_projects_left_sessions_upper_right_details_lower_righ
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        header = app.query_one(Header).region
+        header = app.query_one(TitleBar).region
         projects = app.query_one(ProjectsPane).region
         sessions = app.query_one(SessionsPane).region
         details = app.query_one(DetailsPane).region
@@ -295,7 +297,7 @@ async def test_the_widths_that_shape_the_layout_come_from_the_settings(
 async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Enter on a session opens the details full screen, and escape closes them."""
+    """The 'enter' key on a session opens the details full screen, and 'escape' closes them."""
     a1, _a2, _b1 = three_sessions(fake)
     narrow = (settings.stack_panes_below - 1, 20)
     app = ConclaudeApp(settings)
@@ -319,7 +321,7 @@ async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
 async def test_in_the_trash_the_panes_follow_the_same_widths_and_enter_opens_an_entry(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Trash mode takes the same shapes, and enter opens one entry full screen."""
+    """Trash mode takes the same shapes, and 'enter' opens one entry full screen."""
     _a1, _a2, b1 = three_sessions(fake)
     SessionStore(settings).trash(b1)
     app = ConclaudeApp(settings)
@@ -644,7 +646,7 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
 async def test_enter_on_a_project_moves_into_its_sessions(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Enter on a project moves into its sessions."""
+    """The 'enter' key on a project moves into its sessions."""
     a1, _a2, _b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -659,7 +661,7 @@ async def test_enter_on_a_project_moves_into_its_sessions(
 
 
 async def test_q_quits_from_every_pane(fake: FakeClaude, settings: Settings) -> None:
-    """Q quits from every pane."""
+    """The 'q' key quits from every pane."""
     three_sessions(fake)
     for tabs in range(3):
         app = ConclaudeApp(settings)
@@ -712,7 +714,7 @@ def state(table: SessionsPane) -> tuple[list[str], str | None, tuple[str, bool]]
 async def test_r_reloads_and_the_cursor_finds_its_session_by_id(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """R reloads. The cursor finds its session by id, not by row number."""
+    """The 'r' key reloads. The cursor finds its session by id, not by row number."""
     a1, a2, _b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -838,7 +840,7 @@ async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
 async def test_o_orders_by_the_next_column_and_the_cursor_stays_on_its_session(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """O orders by the next column, O turns it round. The cursor stays on its session."""
+    """The 'o' key orders by the next column, 'O' turns it round. The cursor keeps its session."""
     a1, a2, b1 = sized_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -913,7 +915,7 @@ async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_roun
 async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Slash opens a box. The sessions narrow by title as you type, case aside."""
+    """The '/' key opens a box. The sessions narrow by title as you type, case aside."""
     a1, a2, b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -946,7 +948,7 @@ async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
 async def test_enter_keeps_the_filter_and_escape_on_the_pane_clears_it(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Enter keeps the filter and goes back to the pane. Escape there clears it."""
+    """The 'enter' key keeps the filter and goes back to the pane. 'escape' there clears it."""
     a1, a2, b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -974,7 +976,7 @@ async def test_enter_keeps_the_filter_and_escape_on_the_pane_clears_it(
 async def test_slash_on_the_projects_pane_narrows_the_projects_by_path(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Slash on the projects pane narrows the projects by path."""
+    """The '/' key on the projects pane narrows the projects by path."""
     _a1, _a2, b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -1033,7 +1035,7 @@ def toasts(app: ConclaudeApp) -> list[tuple[str, str, str]]:
 async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """D moves the session under the cursor to the Trash. Its row goes. Nothing reloads."""
+    """The 'd' key moves the session under the cursor to the Trash. Its row goes. No reload."""
     a1, a2, b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -1091,7 +1093,7 @@ async def test_repeated_d_walks_down_the_list_and_the_last_row_hands_over_upward
 async def test_d_has_no_effect_while_another_pane_has_the_focus(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """D has no effect while another pane has the focus, and is not listed there."""
+    """The 'd' key has no effect while another pane has the focus, and is not listed there."""
     a1, a2, b1 = three_sessions(fake)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -1251,7 +1253,7 @@ def two_days_of_trash(
 async def test_t_switches_the_panes_to_the_trash_and_back_again(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """T switches the panes to the Trash. T again brings the sessions back as they were."""
+    """The 't' key switches the panes to the Trash. 't' again brings the sessions back as before."""
     a1, a2, b1 = three_sessions(fake)
     entry = SessionStore(settings).trash(b1)
     fmt = Formatter(settings)
@@ -1272,7 +1274,7 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
             cursor(table),
             columns(table),
         )
-        header = app.screen.query_one(Header).region
+        header = app.screen.query_one(TitleBar).region
         left = app.screen.query_one(DaysPane).region
         upper = table.region
         lower = app.screen.query_one(EntryPane).region
@@ -1281,7 +1283,7 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
         sessions = app.screen.query_one(SessionsPane)
         after = type(app.screen), type(app.focused), cursor(sessions)
 
-    assert before == (MainScreen, SessionsPane, "Trash")
+    assert before == (MainScreen, SessionsPane, "Trash (1)")
     assert in_trash == (
         TrashScreen,
         EntriesPane,
@@ -1476,45 +1478,126 @@ async def test_x_removes_the_entry_for_good(
     assert {s.id for s in SessionStore(settings).list_sessions()} == {a2, b1}
 
 
-async def test_the_header_shows_what_the_trash_holds_and_follows_every_change(
+def titles(app: ConclaudeApp) -> tuple[str, str, str, str]:
+    """The view in the title bar, the label of the 't' key, the left pane title, the table title."""
+    screen = app.screen
+    return (
+        screen.query_one(TitleBar).view,
+        shown_keys(app)["t"],
+        str(screen.query_one(Lister).border_title),
+        str(screen.query_one(Table).border_title),
+    )
+
+
+async def test_the_title_bar_names_the_view_on_the_left_and_the_tool_on_the_right(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The header shows the total Trash size. It follows a delete, a restore and a purge."""
-    a1, _a2, b1 = three_sessions(fake)
+    """The title bar names the view at the left edge, and the tool with its version at the right."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        bar = app.screen.query_one(TitleBar).region
+        view = app.screen.query_one("#view").region
+        brand = app.screen.query_one("#brand").region
+        top = app.screen._compositor.render_strips()[0].text
+        await pilot.press("t")
+        await pilot.pause()
+        in_trash = app.screen._compositor.render_strips()[0].text
+
+    assert (bar.x, bar.y, bar.width, bar.height) == (0, 0, WIDE[0], 1)
+    assert view.x == 0
+    assert brand.right == WIDE[0]
+    assert top.startswith(" Sessions ")
+    assert top.rstrip().endswith(f" {__title__} v{__version__}")
+    assert in_trash.startswith(" Trash ")
+    assert in_trash.rstrip().endswith(f" {__title__} v{__version__}")
+
+
+async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_change(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 't' key carries the Trash count, each pane title what it shows. All follow a change."""
+    a1, a2, b1 = three_sessions(fake)
     store = SessionStore(settings)
     a1_size = store.find_session(a1).size
+    a2_size = store.find_session(a2).size
     long_ago = datetime(2020, 1, 1, tzinfo=timezone.utc)
     old = trash_session(settings, store.find_session(b1), now=long_ago)
     fmt = Formatter(settings)
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        header = app.screen.query_one(Header)
-        at_start = header.screen_title, header.screen_sub_title, app.sub_title
+        at_start = titles(app)
         await pilot.press("tab", "d")
         await pilot.pause()
-        after_delete = app.sub_title
+        after_delete = titles(app)
         await pilot.press("t")
         await pilot.pause()
-        in_trash = app.screen.query_one(Header).screen_sub_title
+        in_trash = titles(app)
         await pilot.press("u")
         await pilot.pause()
-        after_restore = app.sub_title
+        after_restore = titles(app)
         await pilot.press("x")
         await pilot.pause()
-        after_purge = app.sub_title
+        after_purge = titles(app)
         await pilot.press("t")
         await pilot.pause()
-        back = app.screen.query_one(Header).screen_sub_title
+        back = titles(app)
 
-    one = f"Trash: 1 entry, {fmt.size(old.size)}"
-    two = f"Trash: 2 entries, {fmt.size(old.size + a1_size)}"
-    assert at_start == ("conclaude", one, one)
-    assert after_delete == two
-    assert in_trash == two
-    assert after_restore == one
-    assert after_purge == "Trash: empty"
-    assert back == "Trash: empty"
+    both = f"Sessions (2 sessions, {fmt.size(a1_size + a2_size)} total)"
+    one_left = f"Sessions (1 session, {fmt.size(a2_size)} total)"
+    one = f"Trash (1 entry, {fmt.size(old.size)} total)"
+    two = f"Trash (2 entries, {fmt.size(old.size + a1_size)} total)"
+    assert at_start == ("Sessions", "Trash (1)", "Projects (1)", both)
+    assert after_delete == ("Sessions", "Trash (2)", "Projects (1)", one_left)
+    assert in_trash == ("Trash", "Sessions", "Days (2)", two)
+    assert after_restore == ("Trash", "Sessions", "Days (1)", one)
+    assert after_purge == ("Trash", "Sessions", "Days (empty)", "Trash (empty)")
+    assert back == ("Sessions", "Trash", "Projects (1)", both)
+
+
+async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The pane titles count what is on view: one project's sessions, or the filtered rows."""
+    a1, a2, b1 = three_sessions(fake)
+    store = SessionStore(settings)
+    size = {s: store.find_session(s).size for s in (a1, a2, b1)}
+    fmt = Formatter(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        all_projects = titles(app)[2:]
+        await pilot.press("down", "down")
+        await pilot.pause()
+        one_project = titles(app)[2:]
+        await pilot.press("slash", "a", "enter")
+        await pilot.pause()
+        projects_narrowed = titles(app)[2:]
+        # Tab would land on the filter box the projects pane now shows.
+        app.screen.query_one(SessionsPane).focus()
+        await pilot.pause()
+        await pilot.press("slash", "1", "enter")
+        await pilot.pause()
+        sessions_narrowed = titles(app)[2:]
+
+    assert all_projects == (
+        "Projects (2)",
+        f"Sessions (3 sessions, {fmt.size(sum(size.values()))} total)",
+    )
+    assert one_project == (
+        "Projects (2)",
+        f"Sessions (1 session, {fmt.size(size[b1])} total)",
+    )
+    assert projects_narrowed == (
+        "Projects (1)",
+        f"Sessions (2 sessions, {fmt.size(size[a1] + size[a2])} total)",
+    )
+    assert sessions_narrowed == (
+        "Projects (1)",
+        f"Sessions (1 session, {fmt.size(size[a1])} total)",
+    )
 
 
 async def test_restore_and_purge_do_nothing_outside_the_trash_table(
@@ -1574,7 +1657,7 @@ async def test_with_an_empty_trash_the_panes_are_empty_and_the_keys_are_dimmed(
             days(app),
             cursor(table),
             app.screen.query_one(EntryPane).text,
-            app.sub_title,
+            app.screen.query_one(TitleBar).view,
         )
         dimmed = [
             (app.active_bindings[key].binding.show, app.active_bindings[key].enabled)
@@ -1587,7 +1670,7 @@ async def test_with_an_empty_trash_the_panes_are_empty_and_the_keys_are_dimmed(
         await pilot.pause()
         back = type(app.screen)
 
-    assert empty == ([ALL_DAYS], ([], None, 0), "No entry.", "Trash: empty")
+    assert empty == ([ALL_DAYS], ([], None, 0), "No entry.", "Trash")
     assert dimmed == [(True, False), (True, False)]
     assert shown == []
     assert back is MainScreen
@@ -1699,12 +1782,12 @@ async def test_r_in_trash_mode_reads_the_trash_again_and_the_cursor_keeps_its_en
         )
         await pilot.press("r")
         await pilot.pause()
-        after = cursor(table), app.sub_title
+        after = cursor(table), str(table.border_title)
 
     assert before == ([first.id], first.id, 0)
     assert after == (
         ([second.id, first.id], first.id, 1),
-        f"Trash: 2 entries, {fmt.size(first.size + second.size)}",
+        f"Trash (2 entries, {fmt.size(first.size + second.size)} total)",
     )
 
 
@@ -2008,7 +2091,7 @@ async def test_the_about_box_fits_a_small_window_and_scrolls_in_a_smaller_one(
 async def test_every_key_of_the_about_box_closes_it_and_q_does_not_quit(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Escape, enter, ? and q all close the box. In the box, q closes it and stays."""
+    """'escape', 'enter', '?' and 'q' all close the box. In the box, 'q' closes it and stays."""
     three_sessions(fake)
     app = ConclaudeApp(settings)
     closed: list[type] = []
