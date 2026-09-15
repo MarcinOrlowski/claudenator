@@ -233,7 +233,18 @@ class MainScreen(PaneScreen[None]):
             settings.sort_column, settings.sort_descending
         )
         self.load()
-        self.query_one(ProjectsPane).focus()
+        self._focus_start_pane()
+
+    def _focus_start_pane(self) -> None:
+        """Give the focus to the pane the settings name.
+
+        The projects pane still opens on 'All projects', so the sessions pane
+        lists every session whichever pane holds the focus. A name the settings
+        do not know gives the sessions pane.
+        """
+        wanted = self.store.settings.start_pane
+        pane = ProjectsPane if wanted == "projects" else SessionsPane
+        self.query_one(pane).focus()
 
     def load(self) -> None:
         """Read every session and the Trash again, and fill the panes."""

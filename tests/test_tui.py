@@ -268,7 +268,7 @@ async def test_the_focus_never_goes_missing_when_the_window_changes_size(
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("tab", "tab")
+        await pilot.press("tab")
         await pilot.pause()
         on_details = type(app.focused)
         await pilot.resize_terminal(settings.stack_panes_below - 1, 20)
@@ -319,7 +319,7 @@ async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
     app = ConclaudeApp(settings)
     async with app.run_test(size=narrow) as pilot:
         await pilot.pause()
-        await pilot.press("tab", "enter")
+        await pilot.press("enter")
         await pilot.pause()
         box = app.screen.query_one(Lines)
         opened = type(app.screen), str(box.border_title), box.region.width
@@ -410,7 +410,7 @@ async def test_choosing_a_project_shows_only_its_sessions(
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("down")
+        await pilot.press("shift+tab", "down")
         await pilot.pause()
         table = app.query_one(SessionsPane)
         in_a = rows(table), columns(table), app.query_one(ProjectsPane).selected_path
@@ -570,7 +570,7 @@ async def test_moving_the_cursor_changes_the_details(
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("tab", "down")
+        await pilot.press("down")
         await pilot.pause()
         table = app.query_one(SessionsPane)
         selected = table.selected_id
@@ -590,7 +590,7 @@ async def test_the_selection_is_a_session_id_that_survives_a_change_of_project(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "down", "down")
+        await pilot.press("down", "down")
         await pilot.pause()
         in_all = table.selected_id, table.cursor_row
         await pilot.press("shift+tab", "down", "down")
@@ -633,6 +633,51 @@ def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
         assert {"tab", "q", "r", "t", "question_mark"} <= keys, pane.__name__
 
 
+async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The sessions are what the user came for, so their pane starts with the focus.
+
+    The projects pane still opens on 'All projects', so every session is listed,
+    and the keys of the sessions pane are the ones the footer lists.
+    """
+    a1, a2, b1 = three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        pane = app.query_one(ProjectsPane)
+        focused = type(app.focused)
+        listed = rows(table), table.selected_id
+        project = pane.selected_path, str(pane.get_option_at_index(0).prompt)
+        keys = shown_keys(app)
+        text = app.query_one(DetailsPane).text
+
+    assert focused is SessionsPane
+    assert listed == ([a1, a2, b1], a1)
+    assert project == (None, ALL_PROJECTS)
+    assert keys["d"] == "Delete"
+    assert keys["enter"] == "Details"
+    assert f"Id:          {a1}" in text
+
+
+async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The settings name the pane. A name they do not know gives the sessions pane."""
+    three_sessions(fake)
+    seen = []
+    for name in ("projects", "sessions", "no such pane"):
+        settings.start_pane = name
+        app = ConclaudeApp(settings)
+        async with app.run_test(size=WIDE) as pilot:
+            await pilot.pause()
+            seen.append(type(app.focused))
+
+    assert seen == [ProjectsPane, SessionsPane, SessionsPane]
+    assert Settings().start_pane == "sessions"
+
+
 async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -649,12 +694,12 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
             focus.append(type(app.focused))
             keys.append(shown_keys(app))
 
-    assert focus == [ProjectsPane, SessionsPane, DetailsPane, ProjectsPane]
+    assert focus == [SessionsPane, DetailsPane, ProjectsPane, SessionsPane]
     assert keys[0] == keys[3]
     assert keys[0] != keys[1]
-    assert keys[0]["enter"] == "Sessions"
-    assert keys[1]["enter"] == "Details"
-    assert "enter" not in keys[2]
+    assert keys[0]["enter"] == "Details"
+    assert keys[2]["enter"] == "Sessions"
+    assert "enter" not in keys[1]
     for listed in keys:
         assert {"tab", "q"} <= set(listed)
 
@@ -667,7 +712,7 @@ async def test_enter_on_a_project_moves_into_its_sessions(
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("down", "enter")
+        await pilot.press("shift+tab", "down", "enter")
         await pilot.pause()
         focused = type(app.focused)
         selected = app.query_one(SessionsPane).selected_id
@@ -736,7 +781,7 @@ async def test_r_reloads_and_the_cursor_finds_its_session_by_id(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("down", "tab", "down")
+        await pilot.press("shift+tab", "down", "tab", "down")
         await pilot.pause()
         before = table.selected_id, table.cursor_row, rows(table)
         new = new_id()
@@ -765,7 +810,7 @@ async def test_after_a_reload_a_gone_session_hands_its_row_to_the_next_one(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "down")
+        await pilot.press("down")
         await pilot.pause()
         store.trash(a2)
         await pilot.press("r")
@@ -789,7 +834,7 @@ async def test_after_a_reload_a_gone_project_hands_its_line_to_the_next_one(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
-        await pilot.press("down", "down")
+        await pilot.press("shift+tab", "down", "down")
         await pilot.pause()
         before = pane.selected_path
         SessionStore(settings).trash(b1)
@@ -862,7 +907,7 @@ async def test_o_orders_by_the_next_column_and_the_cursor_stays_on_its_session(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "down")
+        await pilot.press("down")
         await pilot.pause()
         seen = [state(table)]
         for key in ("o", "O", "o", "o", "o", "o", "o"):
@@ -893,7 +938,7 @@ async def test_the_project_column_is_skipped_by_o_when_it_is_not_on_view(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("down", "tab")
+        await pilot.press("shift+tab", "down", "tab")
         await pilot.pause()
         seen = []
         for _ in range(5):
@@ -913,7 +958,7 @@ async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_roun
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "down")
+        await pilot.press("down")
         await pilot.pause()
         # The border, the State column and the paddings take the columns before
         # this one, so x 7 is on the Title header.
@@ -939,7 +984,7 @@ async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
         table = app.query_one(SessionsPane)
         box = app.query_one("#sessions-filter", FilterBox)
         at_start = box.display, "escape" in shown_keys(app)
-        await pilot.press("tab", "down", "down", "slash")
+        await pilot.press("down", "down", "slash")
         await pilot.pause()
         opened = type(app.focused), box.display, shown_keys(app)
         await pilot.press("a")
@@ -971,7 +1016,7 @@ async def test_enter_keeps_the_filter_and_escape_on_the_pane_clears_it(
         await pilot.pause()
         table = app.query_one(SessionsPane)
         box = app.query_one("#sessions-filter", FilterBox)
-        await pilot.press("tab", "slash", "b", "enter")
+        await pilot.press("slash", "b", "enter")
         await pilot.pause()
         kept = rows(table), table.selected_id, box.display, box.value
         focused = type(app.focused)
@@ -999,7 +1044,7 @@ async def test_slash_on_the_projects_pane_narrows_the_projects_by_path(
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
         box = app.query_one("#projects-filter", FilterBox)
-        await pilot.press("slash", "B", "enter")
+        await pilot.press("shift+tab", "slash", "B", "enter")
         await pilot.pause()
         narrowed = [str(option.prompt) for option in pane.options]
         focused = type(app.focused)
@@ -1027,7 +1072,7 @@ async def test_a_filter_that_hides_the_cursor_session_moves_the_cursor_to_its_ro
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "slash", "b")
+        await pilot.press("slash", "b")
         await pilot.pause()
         narrowed = rows(table), table.selected_id, table.cursor_row
         await pilot.press("escape")
@@ -1057,8 +1102,6 @@ async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab")
-        await pilot.pause()
         keys = shown_keys(app)
         enabled = app.active_bindings["d"].enabled
         # A session that lands on the disk now shows up only after a reload
@@ -1090,7 +1133,7 @@ async def test_repeated_d_walks_down_the_list_and_the_last_row_hands_over_upward
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("down", "tab", "down")
+        await pilot.press("shift+tab", "down", "tab", "down")
         await pilot.pause()
         seen = [(rows(table), table.selected_id, table.cursor_row)]
         for _ in range(2):
@@ -1116,7 +1159,7 @@ async def test_d_has_no_effect_while_another_pane_has_the_focus(
         await pilot.pause()
         table = app.query_one(SessionsPane)
         seen = []
-        for tabs in (0, 2):
+        for tabs in (1, 2):
             await pilot.press(*(["tab"] * tabs))
             await pilot.pause()
             listed = "d" in shown_keys(app)
@@ -1126,8 +1169,8 @@ async def test_d_has_no_effect_while_another_pane_has_the_focus(
             await pilot.press(*(["shift+tab"] * tabs))
 
     assert seen == [
-        (ProjectsPane, False, [a1, a2, b1]),
         (DetailsPane, False, [a1, a2, b1]),
+        (ProjectsPane, False, [a1, a2, b1]),
     ]
     assert trashed(settings) == []
 
@@ -1150,7 +1193,7 @@ async def test_a_live_session_stays_and_the_reason_shows(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "d")
+        await pilot.press("d")
         await pilot.pause()
         after = rows(table), table.selected_id, table.cursor_row
         shown = toasts(app)
@@ -1176,7 +1219,7 @@ async def test_the_last_session_of_a_project_takes_the_project_with_it(
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
         table = app.query_one(SessionsPane)
-        await pilot.press("down", "down", "tab")
+        await pilot.press("shift+tab", "down", "down", "tab")
         await pilot.pause()
         before = pane.selected_path, rows(table)
         await pilot.press("d")
@@ -1204,7 +1247,7 @@ async def test_in_all_projects_a_gone_project_leaves_the_cursor_where_it_is(
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
         table = app.query_one(SessionsPane)
-        await pilot.press("tab", "down", "down", "d")
+        await pilot.press("down", "down", "d")
         await pilot.pause()
         prompts = [str(option.prompt) for option in pane.options]
         after = pane.selected_path, rows(table), table.selected_id, table.cursor_row
@@ -1220,8 +1263,6 @@ async def test_with_no_row_d_is_dimmed_and_does_nothing(
     """With no row on view, d is dimmed in the footer and does nothing."""
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
-        await pilot.pause()
-        await pilot.press("tab")
         await pilot.pause()
         active = app.active_bindings["d"]
         dimmed = active.binding.show, active.enabled
@@ -1276,7 +1317,7 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("tab", "down")
+        await pilot.press("down")
         await pilot.pause()
         before = type(app.screen), type(app.focused), shown_keys(app)["t"]
         await pilot.press("t")
@@ -1545,7 +1586,7 @@ async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_chan
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         at_start = titles(app)
-        await pilot.press("tab", "d")
+        await pilot.press("d")
         await pilot.pause()
         after_delete = titles(app)
         await pilot.press("t")
@@ -1585,7 +1626,7 @@ async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         all_projects = titles(app)[2:]
-        await pilot.press("down", "down")
+        await pilot.press("shift+tab", "down", "down")
         await pilot.pause()
         one_project = titles(app)[2:]
         await pilot.press("slash", "a", "enter")
@@ -1648,9 +1689,9 @@ async def test_restore_and_purge_do_nothing_outside_the_trash_table(
         shown = toasts(app)
 
     assert seen == [
-        (ProjectsPane, set(), [a1, a2]),
         (SessionsPane, set(), [a1, a2]),
         (DetailsPane, set(), [a1, a2]),
+        (ProjectsPane, set(), [a1, a2]),
         (EntryPane, set(), [entry.id]),
         (DaysPane, set(), [entry.id]),
     ]
@@ -1846,7 +1887,7 @@ async def test_a_long_project_path_is_cut_in_the_middle_and_keeps_its_end(
         room = pane.scrollable_content_region.width
         shown = prompts(app)
         ids = [option.id for option in pane.options]
-        await pilot.press("down")
+        await pilot.press("shift+tab", "down")
         await pilot.pause()
         chosen = pane.selected_path
 
@@ -1870,7 +1911,7 @@ async def test_the_paths_follow_the_width_of_the_projects_pane(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         pane = app.query_one(ProjectsPane)
-        await pilot.press("down", "down")
+        await pilot.press("shift+tab", "down", "down")
         await pilot.pause()
         narrow = pane.scrollable_content_region.width, prompts(app)
         await pilot.resize_terminal(220, WIDE[1])
@@ -2038,7 +2079,7 @@ async def test_the_about_box_names_the_tool_its_version_and_its_address(
         await pilot.pause()
         after = type(app.screen), type(app.focused)
 
-    assert before == (MainScreen, ProjectsPane)
+    assert before == (MainScreen, SessionsPane)
     assert lines[:3] == [
         f"{__title__} {__version__}",
         __description__,
@@ -2046,7 +2087,7 @@ async def test_the_about_box_names_the_tool_its_version_and_its_address(
     ]
     assert lines[-1] == __url__
     assert shown == screen.text
-    assert after == (MainScreen, ProjectsPane)
+    assert after == (MainScreen, SessionsPane)
 
 
 async def test_the_about_box_holds_a_qr_code_of_the_address(
@@ -2255,7 +2296,7 @@ async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one
         await pilot.press("r")
         await pilot.pause()
         stale = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
-        await pilot.press("tab", "o", "o")
+        await pilot.press("o", "o")
         await pilot.pause()
         by_msgs = rows(table), table.sorting
         await pilot.press("O")
@@ -2311,8 +2352,6 @@ async def test_s_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab")
-        await pilot.pause()
         key = shown_keys(app).get("s")
         blank = str(table.get_cell(a1, "msgs"))
         await pilot.press("s")
@@ -2345,7 +2384,7 @@ async def test_s_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
     app = ConclaudeApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        await pilot.press("tab", "s")
+        await pilot.press("s")
         await app.workers.wait_for_complete()
         await pilot.pause()
         cell = str(app.query_one(SessionsPane).get_cell(a1, "msgs"))
@@ -2370,7 +2409,7 @@ async def test_capital_s_scans_every_session_listed_and_fills_the_msgs_column(
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("down")
+        await pilot.press("shift+tab", "down")
         await pilot.pause()
         listed = rows(table)
         await pilot.press("tab")
@@ -2405,7 +2444,7 @@ async def test_the_screen_answers_keys_while_a_scan_runs_in_the_background(
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
             table = app.query_one(SessionsPane)
-            await pilot.press("tab", "S")
+            await pilot.press("S")
             await pilot.pause()
             await pilot.press("down")
             await pilot.pause()
@@ -2436,7 +2475,7 @@ async def test_a_scan_cut_short_by_a_quit_leaves_the_cache_whole(
     try:
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
-            await pilot.press("tab", "S")
+            await pilot.press("S")
             held = await until(lambda: len(seen) == 2, pilot)
             await pilot.press("q")
             await pilot.pause()
@@ -2473,7 +2512,7 @@ async def test_a_row_never_moves_while_the_scan_runs_and_the_order_settles_at_th
         async with app.run_test(size=WIDE) as pilot:
             await pilot.pause()
             table = app.query_one(SessionsPane)
-            await pilot.press("tab", "o", "o")
+            await pilot.press("o", "o")
             await pilot.pause()
             start = rows(table), table.sorting
             await pilot.press("S")
@@ -2508,7 +2547,7 @@ async def test_a_transcript_that_will_not_read_says_why_and_the_scan_walks_on(
         await pilot.pause()
         table = app.query_one(SessionsPane)
         (settings.projects_dir / encode_project("/p/a") / f"{a1}.jsonl").unlink()
-        await pilot.press("tab", "S")
+        await pilot.press("S")
         await app.workers.wait_for_complete()
         await pilot.pause()
         cells = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
@@ -2540,7 +2579,6 @@ async def test_a_scan_does_not_pull_the_list_from_under_the_cursor(
     async with app.run_test(size=(120, 16)) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab")
         # To the last row, so the list is scrolled to its end, then two rows up:
         # the cursor now has two rows below it, on view.
         await pilot.press(*["down"] * 19, "up", "up")
@@ -2572,7 +2610,6 @@ async def test_a_change_of_width_keeps_the_rows_on_view_where_they_are(
     async with app.run_test(size=(120, 16)) as pilot:
         await pilot.pause()
         table = app.query_one(SessionsPane)
-        await pilot.press("tab")
         await pilot.press(*["down"] * 19, "up", "up")
         await pilot.pause()
         before = table.scroll_offset.y, table.cursor_row, table.selected_id

@@ -75,6 +75,7 @@ def test_screen_defaults_are_present() -> None:
     settings = Settings()
 
     assert settings.theme == "textual-dark"
+    assert settings.start_pane == "sessions"
     assert settings.sort_column == "last_used"
     assert settings.sort_descending is True
     assert settings.projects_pane_min_width < settings.projects_pane_max_width
