@@ -43,6 +43,11 @@ class Settings:
 
     # The screen.
     theme: str = "textual-dark"
+    # The pane that holds the focus at start: ``sessions`` or ``projects``. The
+    # sessions are what the user came for, so they get the focus, and the
+    # projects pane opens on ``All projects``, so every session is listed until
+    # the user asks for less. Any other name gives the sessions pane.
+    start_pane: str = "sessions"
     sort_column: str = "last_used"
     sort_descending: bool = True
     # The projects pane takes this share of the width, side by side with the
