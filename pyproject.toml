@@ -20,9 +20,17 @@ description = "The only Claude Code session manager you needca"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Marcin Orlowski", email = "mail@marcinOrlowski.com" }]
-keywords = ["claude", "claude-code", "sessions", "tui", "textual"]
+keywords = [
+  "claude",
+  "claude-code",
+  "claude-sessions",
+  "sessions",
+  "session-management",
+  "tui",
+  "cli",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -57,4 +65,4 @@ only-include = ["conclaude", "tests"]
 testpaths = ["tests"]
 
 [tool.black]
-target-version = ["py310", "py311", "py312", "py313", "py314"]
+target-version = ["py311", "py312", "py313", "py314"]

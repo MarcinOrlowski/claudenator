@@ -29,7 +29,7 @@ jobs:
         # quotes are needed as YAML treats unquoted versions as floats and
         # drops trailing zeros (i.e "3.10" => 3.10, 3.10 => 3.1),
         # so quotes are required.
-        python: [ "3.10", "3.11", "3.12", "3.13", "3.14" ]
+        python: [ "3.11", "3.12", "3.13", "3.14" ]
 
     steps:
       # https://github.com/marketplace/actions/checkout
