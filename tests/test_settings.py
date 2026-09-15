@@ -78,7 +78,11 @@ def test_screen_defaults_are_present() -> None:
     assert settings.sort_column == "last_used"
     assert settings.sort_descending is True
     assert settings.projects_pane_min_width < settings.projects_pane_max_width
-    assert settings.hide_projects_below < settings.hide_details_below
+    assert 0 < settings.projects_pane_min_height
+    # The window shrinks through both steps in turn: the panes go in one column,
+    # and only then a message takes the place of them all.
+    assert settings.min_width < settings.stack_panes_below
+    assert 0 < settings.min_height
     assert settings.confirm_delete is False
     assert settings.time_format == "relative"
     assert settings.cut_mark

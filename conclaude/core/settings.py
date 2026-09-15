@@ -45,13 +45,21 @@ class Settings:
     theme: str = "textual-dark"
     sort_column: str = "last_used"
     sort_descending: bool = True
+    # The projects pane takes this share of the width, side by side with the
+    # other panes, or this share of the height when they go in one column.
     projects_pane_share: float = 0.25
     projects_pane_min_width: int = 24
     projects_pane_max_width: int = 60
-    hide_details_below: int = 100
-    hide_projects_below: int = 60
+    projects_pane_min_height: int = 3
+    # How the layout gives way as the window narrows. Under ``stack_panes_below``
+    # columns the panes go in one column, one over the other, and every pane
+    # keeps the full width. Under ``min_width`` or ``min_height`` the window has
+    # no room for the panes at all, and a plain message takes their place. The
+    # smallest height holds three panes, because one column is the shape a
+    # small window takes.
+    stack_panes_below: int = 100
     min_width: int = 30
-    min_height: int = 8
+    min_height: int = 12
     confirm_delete: bool = False
 
     # How to format dates. See ``format.Formatter``.

@@ -20,6 +20,7 @@ from pathlib import Path
 from qrcat import render_qr
 from textual.color import Color, ColorParseError
 from textual.containers import VerticalScroll
+from textual.geometry import Region
 from textual.theme import BUILTIN_THEMES
 from textual.widgets import DataTable, Header, Static
 
@@ -31,7 +32,7 @@ from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
 from conclaude.core.trash import trash_session
 from conclaude.tui.about import QR_BORDER, QR_ERROR, AboutScreen
-from conclaude.tui.app import ConclaudeApp, MainScreen, TrashScreen
+from conclaude.tui.app import ConclaudeApp, FullScreen, MainScreen, TrashScreen
 from conclaude.tui.panes import (
     ALL_DAYS,
     ALL_PROJECTS,
@@ -43,6 +44,8 @@ from conclaude.tui.panes import (
     Lines,
     ProjectsPane,
     SessionsPane,
+    Table,
+    TooSmall,
 )
 from tests.fabricate import FakeClaude, FakeProc, new_id, session_records, snapshot
 
@@ -57,6 +60,30 @@ def columns(table: DataTable) -> list[str]:
 def rows(table: DataTable) -> list[str]:
     """The session ids, top to bottom."""
     return [str(row.key.value) for row in table.ordered_rows]
+
+
+def left_on_view(app: ConclaudeApp) -> bool:
+    """Whether the left pane is on view.
+
+    It goes out of view with the box around it, so its own ``display`` says
+    nothing. The box is the thing to look at.
+    """
+    return bool(app.screen.query_one("#left").display)
+
+
+def one_column(app: ConclaudeApp) -> bool:
+    """Whether the panes are in one column, one over the other."""
+    return "-stacked" in app.screen.query_one("#body").classes
+
+
+def pane_boxes(app: ConclaudeApp) -> tuple[Region, Region, Region]:
+    """Where the three panes are: the left one, the table, the lower one."""
+    screen = app.screen
+    return (
+        screen.query_one("#left").region,
+        screen.query_one(Table).region,
+        screen.query_one(Lines).region,
+    )
 
 
 def shown_keys(app: ConclaudeApp) -> dict[str, str]:
@@ -114,6 +141,210 @@ async def test_three_panes_projects_left_sessions_upper_right_details_lower_righ
     assert projects.bottom >= details.bottom
     assert settings.projects_pane_min_width <= projects.width
     assert projects.width <= settings.projects_pane_max_width
+
+
+async def test_a_narrow_window_puts_the_three_panes_in_one_column(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A narrow window holds the panes in one column, and a wide one in two again."""
+    three_sessions(fake)
+    narrow = (settings.stack_panes_below - 1, 30)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.resize_terminal(*narrow)
+        await pilot.pause()
+        projects, sessions, details = pane_boxes(app)
+        stacked = one_column(app), left_on_view(app)
+        await pilot.resize_terminal(*WIDE)
+        await pilot.pause()
+        wide_boxes = pane_boxes(app)
+        wide = one_column(app), left_on_view(app)
+
+    assert stacked == (True, True)
+    # Every pane keeps the full width, and they sit one over the other
+    assert projects.x == sessions.x == details.x == 0
+    assert projects.width == sessions.width == details.width == narrow[0]
+    assert projects.bottom == sessions.y
+    assert sessions.bottom == details.y
+    # Two columns again, with no restart
+    assert wide == (False, True)
+    assert wide_boxes[0].right == wide_boxes[1].x == wide_boxes[2].x
+    assert wide_boxes[0].y == wide_boxes[1].y
+
+
+async def test_every_pane_stays_on_view_in_the_narrowest_window(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """No pane ever goes out of view on its own: the column holds all three."""
+    three_sessions(fake)
+    narrow = (settings.min_width, settings.min_height)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.resize_terminal(*narrow)
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        shown = left_on_view(app), one_column(app), table.display
+        projects, sessions, details = pane_boxes(app)
+        listed = rows(table)
+
+    assert shown == (True, True, True)
+    assert projects.x == sessions.x == details.x == 0
+    assert projects.width == sessions.width == details.width == narrow[0]
+    assert len(listed) == 3
+
+
+async def test_a_window_too_small_shows_a_plain_message_in_place_of_the_panes(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Too small to be of use: a plain message takes the place of the whole layout."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        message = app.query_one(TooSmall)
+        body = app.query_one("#body")
+        wide = (body.display, message.display)
+        await pilot.resize_terminal(settings.min_width - 1, WIDE[1])
+        await pilot.pause()
+        thin = (body.display, message.display)
+        await pilot.resize_terminal(WIDE[0], settings.min_height - 1)
+        await pilot.pause()
+        short = (body.display, message.display)
+        text = str(message.render())
+        await pilot.resize_terminal(*WIDE)
+        await pilot.pause()
+        back = (body.display, message.display)
+
+    assert wide == (True, False)
+    assert thin == (False, True)
+    assert short == (False, True)
+    assert "Window too small" in text
+    assert f"{settings.min_width} x {settings.min_height}" in text
+    assert back == (True, False)
+
+
+async def test_q_still_quits_while_the_window_is_too_small(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A window with no room for the panes does not trap the user: q still quits."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.resize_terminal(settings.min_width - 1, settings.min_height - 1)
+        await pilot.pause()
+        await pilot.press("q")
+        await pilot.pause()
+        running = app.is_running
+
+    assert running is False
+
+
+async def test_the_focus_never_goes_missing_when_the_window_changes_size(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """One column keeps the focus where it was. A window too small hands it to the table."""
+    three_sessions(fake)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("tab", "tab")
+        await pilot.pause()
+        on_details = type(app.focused)
+        await pilot.resize_terminal(settings.stack_panes_below - 1, 20)
+        await pilot.pause()
+        stacked = type(app.focused)
+        await pilot.resize_terminal(settings.min_width - 1, settings.min_height - 1)
+        await pilot.pause()
+        smaller = type(app.focused)
+        await pilot.resize_terminal(*WIDE)
+        await pilot.pause()
+        back = type(app.focused)
+
+    assert on_details is DetailsPane
+    # No pane goes out of view here, so the focus has no reason to move
+    assert stacked is DetailsPane
+    # The panes went with the layout, so the table holds the keys
+    assert smaller is SessionsPane
+    assert back is SessionsPane
+
+
+async def test_the_widths_that_shape_the_layout_come_from_the_settings(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The breakpoints are settings, never numbers in the code."""
+    three_sessions(fake)
+    settings.stack_panes_below = WIDE[0] + 10
+    settings.min_width = WIDE[0] - 10
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        shaped = one_column(app), left_on_view(app)
+        body = app.query_one("#body").display
+        await pilot.resize_terminal(settings.min_width - 1, WIDE[1])
+        await pilot.pause()
+        smaller = app.query_one("#body").display, app.query_one(TooSmall).display
+
+    assert shaped == (True, True)
+    assert body is True
+    assert smaller == (False, True)
+
+
+async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Enter on a session opens the details full screen, and escape closes them."""
+    a1, _a2, _b1 = three_sessions(fake)
+    narrow = (settings.stack_panes_below - 1, 20)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=narrow) as pilot:
+        await pilot.pause()
+        await pilot.press("tab", "enter")
+        await pilot.pause()
+        box = app.screen.query_one(Lines)
+        opened = type(app.screen), str(box.border_title), box.region.width
+        text = box.text
+        await pilot.press("escape")
+        await pilot.pause()
+        closed = type(app.screen), type(app.focused)
+
+    assert opened == (FullScreen, "Details", narrow[0])
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
+    assert re.search(r"^Title: +A1 ", text, re.M)
+    assert closed == (MainScreen, SessionsPane)
+
+
+async def test_in_the_trash_the_panes_follow_the_same_widths_and_enter_opens_an_entry(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Trash mode takes the same shapes, and enter opens one entry full screen."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        wide = one_column(app), left_on_view(app)
+        await pilot.resize_terminal(settings.stack_panes_below - 1, 20)
+        await pilot.pause()
+        narrow = (one_column(app), left_on_view(app), type(app.focused))
+        await pilot.press("enter")
+        await pilot.pause()
+        box = app.screen.query_one(Lines)
+        opened = type(app.screen), str(box.border_title)
+        text = box.text
+        await pilot.press("escape")
+        await pilot.pause()
+        closed = type(app.screen), type(app.focused)
+
+    assert wide == (False, True)
+    assert narrow == (True, True, EntriesPane)
+    assert opened == (FullScreen, "Entry")
+    assert re.search(rf"^Session: +{b1}$", text, re.M)
+    assert closed == (TrashScreen, EntriesPane)
 
 
 async def test_projects_pane_lists_all_projects_first_and_hides_empty_ones(
@@ -403,8 +634,8 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     assert focus == [ProjectsPane, SessionsPane, DetailsPane, ProjectsPane]
     assert keys[0] == keys[3]
     assert keys[0] != keys[1]
-    assert "enter" in keys[0]
-    assert "enter" not in keys[1]
+    assert keys[0]["enter"] == "Sessions"
+    assert keys[1]["enter"] == "Details"
     assert "enter" not in keys[2]
     for listed in keys:
         assert {"tab", "q"} <= set(listed)
