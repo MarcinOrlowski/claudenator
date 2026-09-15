@@ -80,6 +80,20 @@ def rows(table: DataTable) -> list[str]:
     return [str(row.key.value) for row in table.ordered_rows]
 
 
+def drawn_colours(table: SessionsPane, sid: str) -> set[str]:
+    """The colours the row of ``sid`` is drawn in, as the console names them.
+
+    The header holds the first line, so the first row comes right after it. A
+    row takes its colour whole, so the answer is one colour and no more.
+    """
+    line = rows(table).index(sid) + 1
+    return {
+        segment.style.color.name
+        for segment in table.render_line(line)
+        if segment.style is not None and segment.style.color is not None
+    }
+
+
 def left_on_view(app: ConclaudeApp) -> bool:
     """Whether the left pane is on view.
 
@@ -493,6 +507,171 @@ async def test_the_state_column_holds_one_slot_for_every_state(
         broken: "--D",
     }
     assert titles == {running: "dev:app", parent: "Mum", child: "Kid", twin: "Twin"}
+
+
+async def test_a_session_row_takes_its_colour_from_its_state(
+    fake: FakeClaude, proc: FakeProc, settings: Settings
+) -> None:
+    """A damaged row, a live row and a fork each take a colour of their own.
+
+    A row with none of these states keeps the plain text colour. Every colour
+    comes from the theme, so all 20 themes fit, and the State column says the
+    same thing in letters, so the colour is never the only clue.
+    """
+    running, child, broken, plain, parked = (new_id() for _ in range(5))
+    fake.transcript("/p/x", running, session_records(running, "/p/x"))
+    fake.marker(100, running, 5000, name="Run")
+    proc.stat(100, 5000)
+    fake.transcript("/p/x", plain, session_records(plain, "/p/x"))
+    fake.transcript("/p/x", child, session_records(child, "/p/x", copied_from=plain))
+    fake.transcript("/p/x", broken, raw=b"\xff\xfe")
+    fake.transcript("/p/x", parked, session_records(parked, "/p/x"))
+    listed = (broken, running, child, plain)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        # The cursor paints the row it sits on, so it waits on a row of its own.
+        table.move_cursor(row=rows(table).index(parked))
+        await pilot.pause()
+        seen = {sid: drawn_colours(table, sid) for sid in listed}
+        states = {sid: str(table.get_cell(sid, "state")) for sid in listed}
+        theme = app.theme_variables
+        blank = table.rich_style.color
+
+    assert states == {broken: "--D", running: "L--", child: "-F-", plain: "---"}
+    assert seen[broken] == {theme["text-error"].lower()}
+    assert seen[running] == {theme["text-success"].lower()}
+    assert seen[child] == {theme["text-primary"].lower()}
+    assert seen[plain] == {blank.name}
+    assert len({tuple(colours) for colours in seen.values()}) == 4
+
+
+async def test_a_row_holds_one_colour_only_so_the_worse_state_wins(
+    fake: FakeClaude, proc: FakeProc, settings: Settings
+) -> None:
+    """A session in two states takes the colour of the worse one.
+
+    A damaged session that is live is the colour of a damaged one. A live fork
+    is the colour of a live session. The State column still shows both letters.
+    """
+    broken, twin, mum, parked = (new_id() for _ in range(4))
+    fake.transcript("/p/x", mum, session_records(mum, "/p/x"))
+    fake.transcript("/p/x", twin, session_records(twin, "/p/x", copied_from=mum))
+    fake.marker(100, twin, 5000, name="Twin")
+    proc.stat(100, 5000)
+    fake.transcript("/p/x", broken, raw=b"\xff\xfe")
+    fake.marker(200, broken, 6000, name="Broken")
+    proc.stat(200, 6000)
+    fake.transcript("/p/x", parked, session_records(parked, "/p/x"))
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        table.move_cursor(row=rows(table).index(parked))
+        await pilot.pause()
+        seen = {sid: drawn_colours(table, sid) for sid in (broken, twin)}
+        states = {sid: str(table.get_cell(sid, "state")) for sid in (broken, twin)}
+        theme = app.theme_variables
+
+    assert states == {broken: "L-D", twin: "LF-"}
+    assert seen[broken] == {theme["text-error"].lower()}
+    assert seen[twin] == {theme["text-success"].lower()}
+
+
+async def test_the_row_under_the_cursor_keeps_the_colours_of_the_cursor(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The cursor paints the row it sits on, so that row stays easy to read.
+
+    A damaged row is red, but not while the cursor is on it. The cursor comes
+    first, in every theme.
+    """
+    broken, other = new_id(), new_id()
+    fake.transcript("/p/x", broken, raw=b"\xff\xfe")
+    fake.transcript("/p/x", other, session_records(other, "/p/x"))
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        table.move_cursor(row=rows(table).index(broken))
+        await pilot.pause()
+        on_it = drawn_colours(table, broken)
+        cursor = table.get_component_rich_style("datatable--cursor").color
+        table.move_cursor(row=rows(table).index(other))
+        await pilot.pause()
+        off_it = drawn_colours(table, broken)
+        theme = app.theme_variables
+
+    assert on_it == {cursor.name}
+    assert off_it == {theme["text-error"].lower()}
+    assert cursor.name != theme["text-error"].lower()
+
+
+async def test_the_row_colours_follow_the_theme_in_effect(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Another theme has another red, and the rows take it at once.
+
+    The colour comes from the stylesheet every time a row is drawn, so no row
+    is built again when the theme changes.
+    """
+    broken, other = new_id(), new_id()
+    fake.transcript("/p/x", broken, raw=b"\xff\xfe")
+    fake.transcript("/p/x", other, session_records(other, "/p/x"))
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        table.move_cursor(row=rows(table).index(other))
+        await pilot.pause()
+        first = app.theme_variables["text-error"].lower()
+        before = drawn_colours(table, broken)
+        app.theme = "gruvbox"
+        await pilot.pause()
+        second = app.theme_variables["text-error"].lower()
+        after = drawn_colours(table, broken)
+
+    assert before == {first}
+    assert after == {second}
+    assert first != second
+
+
+async def test_every_theme_gives_the_states_colours_of_their_own(
+    fake: FakeClaude, proc: FakeProc, settings: Settings
+) -> None:
+    """In every theme the library ships, the four kinds of row look different.
+
+    A damaged row, a live row, a fork and a plain row take four colours, and no
+    theme gives two of them the same one.
+    """
+    running, child, broken, plain, parked = (new_id() for _ in range(5))
+    fake.transcript("/p/x", running, session_records(running, "/p/x"))
+    fake.marker(100, running, 5000, name="Run")
+    proc.stat(100, 5000)
+    fake.transcript("/p/x", plain, session_records(plain, "/p/x"))
+    fake.transcript("/p/x", child, session_records(child, "/p/x", copied_from=plain))
+    fake.transcript("/p/x", broken, raw=b"\xff\xfe")
+    fake.transcript("/p/x", parked, session_records(parked, "/p/x"))
+    listed = (broken, running, child, plain)
+    seen: dict[str, set[str]] = {}
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        table.move_cursor(row=rows(table).index(parked))
+        for name in sorted(BUILTIN_THEMES):
+            app.theme = name
+            await pilot.pause()
+            # One colour for every row, and a colour of its own for every state.
+            seen[name] = {
+                colour for sid in listed for colour in drawn_colours(table, sid)
+            }
+
+    assert len(seen) >= 20
+    assert {name: len(colours) for name, colours in seen.items()} == {
+        name: len(listed) for name in seen
+    }
 
 
 async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
@@ -2292,6 +2471,9 @@ def test_the_stylesheet_names_no_literal_colour() -> None:
         "$border-blurred",
         "$text",
         "$text-muted",
+        "$text-error",
+        "$text-success",
+        "$text-primary",
     } <= variables
 
 
