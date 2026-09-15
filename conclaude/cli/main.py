@@ -20,7 +20,7 @@ from pathlib import Path
 
 from conclaude import __version__
 from conclaude.core.errors import ConclaudeError
-from conclaude.core.format import Formatter
+from conclaude.core.format import Formatter, plural
 from conclaude.core.model import Session
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
@@ -34,6 +34,11 @@ def short_title(session: Session) -> str:
     if len(text) > TITLE_WIDTH:
         text = text[: TITLE_WIDTH - 3].rstrip() + "…"
     return text
+
+
+def plural_of(noun: str, count: int) -> str:
+    """``noun`` in the number that fits ``count``: ``1 turn``, ``2 turns``, ``0 turns``."""
+    return noun if count == 1 else plural(noun)
 
 
 def open_screen(settings: Settings) -> int:
@@ -77,6 +82,15 @@ def build_parser() -> argparse.ArgumentParser:
         "session_id", metavar="ID", help="a session id, or a unique prefix of one"
     )
     info_parser.add_argument("--json", action="store_true", help="print JSON")
+
+    scan_parser = commands.add_parser(
+        "scan", help="read every transcript in full and cache its figures"
+    )
+    scan_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="read a transcript again even when its cached figures are fresh",
+    )
     return parser
 
 
@@ -137,6 +151,41 @@ def cmd_info(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> i
     return 0
 
 
+def cmd_scan(store: SessionStore, args: argparse.Namespace, fmt: Formatter) -> int:
+    """Deep-scan every session and cache the figures. One line per session."""
+    sessions = store.list_sessions()
+    if not sessions:
+        print(f"No sessions found under {store.settings.claude_dir}")
+        return 0
+    read = kept = failed = 0
+    for session in sessions:
+        before = store.figures_of(session)
+        fresh = before is not None and not before.stale and not args.force
+        try:
+            figures = store.scan_of(session, force=args.force)
+        except ConclaudeError as error:
+            failed += 1
+            print(f"{session.id[:8]}  {error}", file=sys.stderr)
+            continue
+        if fresh:
+            kept += 1
+        else:
+            read += 1
+        turns = f"{fmt.count(figures.turns)} {plural_of('turn', figures.turns)}"
+        tokens = f"{fmt.count(figures.tokens)} {plural_of('token', figures.tokens)}"
+        length = fmt.duration(figures.duration)
+        state = "cached" if fresh else "scanned"
+        print(f"{session.id[:8]}  {turns}  {tokens}  {length}  {state}")
+    dropped = store.cache.forget_missing()
+    print()
+    print(
+        f"{read} scanned, {kept} already fresh, {failed} failed, "
+        f"{dropped} gone from the disk and forgotten"
+    )
+    print(f"Cache: {store.settings.cache_file}")
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the command line. Returns the exit code."""
     parser = build_parser()
@@ -151,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_list(store, args, fmt)
         if args.command == "info":
             return cmd_info(store, args, fmt)
+        if args.command == "scan":
+            return cmd_scan(store, args, fmt)
     except ConclaudeError as error:
         print(f"conclaude: {error}", file=sys.stderr)
         return 1

@@ -49,7 +49,15 @@ from conclaude.tui.panes import (
     TitleBar,
     TooSmall,
 )
-from tests.fabricate import FakeClaude, FakeProc, new_id, session_records, snapshot
+from tests.fabricate import (
+    FakeClaude,
+    FakeProc,
+    dump_line,
+    new_id,
+    prompt_record,
+    session_records,
+    snapshot,
+)
 
 WIDE = (140, 40)
 
@@ -2207,3 +2215,47 @@ def test_the_stylesheet_names_no_literal_colour() -> None:
         "$text",
         "$text-muted",
     } <= variables
+
+
+async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Msgs is blank before a scan. After one and a reload it shows the turn count.
+    After the transcript grows, the old count stays, a star in front. The Msgs order
+    puts the busiest first and the unscanned last, and a click on the header
+    turns it round.
+    """
+    quiet, busy, unscanned = new_id(), new_id(), new_id()
+    fake.transcript("/p/x", quiet, session_records(quiet, "/p/x"), mtime=1000)
+    busy_records = session_records(busy, "/p/x") + [prompt_record(busy, "More")]
+    busy_path = fake.transcript("/p/x", busy, busy_records, mtime=2000)
+    fake.transcript("/p/x", unscanned, mtime=3000)
+    store = SessionStore(settings)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        before = [str(table.get_cell(sid, "msgs")) for sid in rows(table)]
+        for session in store.list_sessions():
+            if session.id != unscanned:
+                store.scan_of(session)
+        await pilot.press("r")
+        await pilot.pause()
+        after = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
+        with open(busy_path, "ab") as handle:
+            handle.write(dump_line(prompt_record(busy, "One more")))
+        await pilot.press("r")
+        await pilot.pause()
+        stale = {sid: str(table.get_cell(sid, "msgs")) for sid in rows(table)}
+        await pilot.press("tab", "o", "o")
+        await pilot.pause()
+        by_msgs = rows(table), table.sorting
+        await pilot.press("O")
+        await pilot.pause()
+        reversed_msgs = rows(table), table.sorting
+
+    assert before == ["", "", ""]
+    assert after == {quiet: "1", busy: "2", unscanned: ""}
+    assert stale == {quiet: "1", busy: "*2", unscanned: ""}
+    assert by_msgs == ([busy, quiet, unscanned], ("msgs", True))
+    assert reversed_msgs == ([unscanned, quiet, busy], ("msgs", False))

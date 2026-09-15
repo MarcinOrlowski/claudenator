@@ -25,7 +25,7 @@ from textual.widgets import Footer
 from conclaude import __title__
 from conclaude.core.errors import ConclaudeError
 from conclaude.core.format import Formatter
-from conclaude.core.model import Session, SessionDetails, TrashEntry
+from conclaude.core.model import Figures, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore, projects_of
 from conclaude.tui.about import AboutScreen
@@ -187,6 +187,7 @@ class MainScreen(PaneScreen[None]):
         super().__init__(store, fmt)
         self._sessions: list[Session] = []
         self._by_id: dict[str, Session] = {}
+        self._figures: dict[str, Figures] = {}
         self._details: dict[str, SessionDetails] = {}
         self._trash: list[TrashEntry] = []
 
@@ -220,6 +221,7 @@ class MainScreen(PaneScreen[None]):
         self.store.reload()
         self._sessions = self.store.list_sessions()
         self._by_id = {session.id: session for session in self._sessions}
+        self._figures = self.store.figures_for(self._sessions)
         self._details.clear()
         self._trash = self.store.list_trash()
         self._show_trash(self._trash)
@@ -239,7 +241,9 @@ class MainScreen(PaneScreen[None]):
             shown = self._sessions
         else:
             shown = [s for s in self._sessions if s.project_path == event.path]
-        self.query_one(SessionsPane).show(shown, with_project=event.path is None)
+        self.query_one(SessionsPane).show(
+            shown, with_project=event.path is None, figures=self._figures
+        )
 
     def on_projects_pane_opened(self) -> None:
         """The 'enter' key on a project moves the user into its sessions."""
@@ -288,6 +292,7 @@ class MainScreen(PaneScreen[None]):
         for session in visit.restored:
             self._by_id[session.id] = session
         self._sessions = list(self._by_id.values())
+        self._figures = self.store.figures_for(self._sessions)
         self.query_one(ProjectsPane).show(projects_of(self._sessions))
 
     def _forget(self, session: Session) -> None:

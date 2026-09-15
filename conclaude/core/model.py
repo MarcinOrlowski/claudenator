@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +22,77 @@ from typing import Any
 def _iso(value: datetime | None) -> str | None:
     """A timestamp for JSON output, to the second. Never microseconds."""
     return value.isoformat(timespec="seconds") if value else None
+
+
+@dataclass(frozen=True)
+class Figures:
+    """The costly numbers of one session: what a read of the whole transcript found.
+
+    The transcript's size and change time say which copy of the file the
+    numbers describe. ``stale`` is True when the file has changed since, so
+    the numbers are old but still worth a look.
+    """
+
+    transcript_path: Path
+    transcript_size: int
+    transcript_mtime_ns: int
+    scanned_at: datetime
+    turns: int
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    # Model name and the messages it answered, most used first.
+    models: tuple[tuple[str, int], ...]
+    # Tool name and how many times it was called, most called first.
+    tools: tuple[tuple[str, int], ...]
+    first_at: datetime | None
+    last_at: datetime | None
+    stale: bool = False
+
+    @property
+    def tokens(self) -> int:
+        """Every token, in and out, cached or not."""
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_read_tokens
+            + self.cache_write_tokens
+        )
+
+    @property
+    def tool_calls(self) -> int:
+        """How many times any tool was called."""
+        return sum(count for _name, count in self.tools)
+
+    @property
+    def duration(self) -> timedelta | None:
+        """From the first record with a time to the last one. None with no times."""
+        if self.first_at is None or self.last_at is None:
+            return None
+        return self.last_at - self.first_at
+
+    def to_dict(self) -> dict[str, Any]:
+        """A plain dict for JSON output."""
+        duration = self.duration
+        return {
+            "scanned_at": _iso(self.scanned_at),
+            "stale": self.stale,
+            "turns": self.turns,
+            "tokens": self.tokens,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cache_read_tokens": self.cache_read_tokens,
+            "cache_write_tokens": self.cache_write_tokens,
+            "models": dict(self.models),
+            "tool_calls": self.tool_calls,
+            "tools": dict(self.tools),
+            "first_at": _iso(self.first_at),
+            "last_at": _iso(self.last_at),
+            "duration_seconds": (
+                int(duration.total_seconds()) if duration is not None else None
+            ),
+        }
 
 
 @dataclass(frozen=True)
@@ -86,15 +157,20 @@ class Session:
 
 @dataclass(frozen=True)
 class SessionDetails:
-    """One session in full, plus the one number that needs the whole transcript read."""
+    """One session in full, plus the numbers that need the whole transcript read.
+
+    ``figures`` come from the cache alone. None means no deep scan has run yet.
+    """
 
     session: Session
     inherited_bytes: int
+    figures: Figures | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """A plain dict for JSON output."""
         data = self.session.to_dict()
         data["inherited_bytes"] = self.inherited_bytes
+        data["figures"] = self.figures.to_dict() if self.figures else None
         return data
 
 

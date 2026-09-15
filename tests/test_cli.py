@@ -21,7 +21,15 @@ import pytest
 from conclaude.cli.main import main
 from conclaude.core.settings import Settings
 from conclaude.core.store import SessionStore
-from tests.fabricate import FakeClaude, FakeProc, new_id, session_records
+from tests.fabricate import (
+    FakeClaude,
+    FakeProc,
+    answer_records,
+    dump_line,
+    new_id,
+    prompt_record,
+    session_records,
+)
 
 PROJECT = "/p/x"
 
@@ -324,3 +332,149 @@ def test_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert stop.value.code == 0
     assert out.startswith("conclaude ")
+
+
+def test_scan_reads_every_session_once_and_then_uses_the_cache(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The first scan reads every transcript. The second finds them all fresh and
+    reads none. ``--force`` reads them again. One line per session, then a sum.
+    """
+    one, two = new_id(), new_id()
+    fake.transcript(
+        PROJECT,
+        one,
+        session_records(one, PROJECT) + answer_records(one, tools=["Bash"]),
+    )
+    fake.transcript(PROJECT, two, session_records(two, PROJECT, human=None))
+
+    code, first, err = run(capsys, settings, "scan")
+    _code, second, _err = run(capsys, settings, "scan")
+    _code, forced, _err = run(capsys, settings, "scan", "--force")
+
+    assert code == 0 and err == ""
+    rows = {
+        line[:8]: line for line in first.splitlines() if line[:8] in (one[:8], two[:8])
+    }
+    assert rows[one[:8]].endswith("1 turn  370 tokens  0s  scanned")
+    assert rows[two[:8]].endswith("0 turns  0 tokens  0s  scanned")
+    assert "2 scanned, 0 already fresh, 0 failed, 0 gone from the disk" in first
+    assert first.rstrip().endswith(f"Cache: {settings.cache_file}")
+    assert second.count("  cached") == 2
+    assert "0 scanned, 2 already fresh" in second
+    assert forced.count("  scanned") == 2
+    assert settings.cache_file.is_file()
+
+
+def test_scan_with_nothing_to_scan(
+    settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scan with nothing to scan says so and makes no cache."""
+    code, out, _err = run(capsys, settings, "scan")
+
+    assert code == 0
+    assert out.startswith("No sessions found under ")
+    assert not settings.cache_file.exists()
+
+
+def test_scan_reports_a_transcript_it_cannot_read_and_goes_on(
+    fake: FakeClaude,
+    settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One unreadable transcript is named on stderr. The rest are scanned. Exit 1."""
+    bad, good = new_id(), new_id()
+    bad_path = fake.transcript(PROJECT, bad)
+    fake.transcript(PROJECT, good)
+    from conclaude.core import store as store_module
+
+    real = store_module.deep_scan
+
+    def flaky(path, *args, **kwargs):
+        if path == bad_path:
+            raise PermissionError(13, "Permission denied")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(store_module, "deep_scan", flaky)
+
+    code, out, err = run(capsys, settings, "scan")
+
+    assert code == 1
+    assert f"{bad[:8]}  could not read {bad_path}: Permission denied" in err
+    assert good[:8] in out
+    assert "1 scanned, 0 already fresh, 1 failed" in out
+
+
+def test_scan_forgets_the_figures_of_a_trashed_session(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A scan drops the row of a transcript that left the disk, and says so."""
+    gone, kept = new_id(), new_id()
+    fake.transcript(PROJECT, gone)
+    fake.transcript(PROJECT, kept)
+    run(capsys, settings, "scan")
+    SessionStore(settings).trash(gone)
+
+    _code, out, _err = run(capsys, settings, "scan")
+
+    assert "0 scanned, 1 already fresh, 0 failed, 1 gone from the disk" in out
+
+
+def test_info_shows_the_figures_after_a_scan_and_marks_them_when_stale(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Before a scan, info names the command to run. After it, the figures show.
+    After the transcript changes, the old figures stay, each marked outdated.
+    """
+    sid = new_id()
+    records = session_records(sid, PROJECT) + answer_records(
+        sid, tools=["Bash", "Edit"]
+    )
+    path = fake.transcript(PROJECT, sid, records)
+
+    _code, before, _err = run(capsys, settings, "info", sid)
+    run(capsys, settings, "scan")
+    _code, after, _err = run(capsys, settings, "info", sid)
+    with open(path, "ab") as handle:
+        handle.write(dump_line(prompt_record(sid, "One more thing")))
+    code, stale, _err = run(capsys, settings, "info", sid)
+
+    assert "Deep scan:   none  (run 'conclaude scan')" in before
+    assert "Turns:" not in before
+    assert "Turns:        1\n" in after
+    assert "Tokens:       370  (10 in, 20 out)\n" in after
+    assert "Cache tokens: 300 read, 40 written\n" in after
+    assert "Models:       claude-opus-5 (2)\n" in after
+    assert "Tool calls:   2  (Bash 1, Edit 1)\n" in after
+    assert re.search(r"Scanned:      (just now|\d+s ago)\n", after)
+    assert code == 0
+    assert "Turns:        (outdated) 1\n" in stale
+    assert "Tokens:       (outdated) 370  (10 in, 20 out)\n" in stale
+    assert "Tool calls:   (outdated) 2  (Bash 1, Edit 1)\n" in stale
+    assert "(the transcript changed since; run 'conclaude scan')" in stale
+
+
+def test_info_json_carries_the_figures_or_null(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The JSON form has ``figures`` as null before a scan and as an object after."""
+    sid = new_id()
+    path = fake.transcript(
+        PROJECT, sid, session_records(sid, PROJECT) + answer_records(sid)
+    )
+
+    _code, before, _err = run(capsys, settings, "info", sid, "--json")
+    run(capsys, settings, "scan")
+    _code, after, _err = run(capsys, settings, "info", sid, "--json")
+    path.write_bytes(path.read_bytes() + b"\n")
+    _code, changed, _err = run(capsys, settings, "info", sid, "--json")
+
+    assert json.loads(before)["figures"] is None
+    figures = json.loads(after)["figures"]
+    assert figures["stale"] is False
+    assert figures["turns"] == 1
+    assert figures["tokens"] == 370
+    assert figures["models"] == {"claude-opus-5": 2}
+    assert json.loads(changed)["figures"]["stale"] is True
+    assert json.loads(changed)["figures"]["turns"] == 1

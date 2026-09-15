@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 
 from conclaude.core.format import Formatter
-from conclaude.core.model import Part, Session, SessionDetails, TrashEntry
+from conclaude.core.model import Figures, Part, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 
 NOW = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
@@ -82,6 +82,27 @@ def test_both_shows_absolute_then_relative() -> None:
 def test_a_missing_moment_is_a_dash() -> None:
     """A missing moment is a dash."""
     assert Formatter(Settings()).timestamp(None) == "-"
+
+
+def test_a_duration_shows_its_two_largest_units_and_a_missing_one_is_a_dash() -> None:
+    """A duration shows its two largest units, like a relative time with no 'ago'."""
+    fmt = Formatter(Settings())
+
+    assert fmt.duration(None) == "-"
+    assert fmt.duration(timedelta(0)) == "0s"
+    assert fmt.duration(timedelta(seconds=59)) == "59s"
+    assert fmt.duration(timedelta(hours=2, minutes=11, seconds=16)) == "2h 11m"
+    assert fmt.duration(timedelta(days=3)) == "3d"
+
+
+def test_a_count_carries_a_separator_every_three_digits() -> None:
+    """A count carries a separator every three digits."""
+    fmt = Formatter(Settings())
+
+    assert fmt.count(0) == "0"
+    assert fmt.count(999) == "999"
+    assert fmt.count(1000) == "1,000"
+    assert fmt.count(83321309) == "83,321,309"
 
 
 def test_an_unknown_time_format_is_refused() -> None:
@@ -274,6 +295,110 @@ def test_describe_names_the_folder_once_and_the_files_in_it_by_their_name() -> N
     assert lines["Total"] == "2.1K"
     assert without["Sidecar"] == "none"
     assert without["Total"] == "100B"
+
+
+def figures(**overrides: Any) -> Figures:
+    """The figures of a deep scan done an hour before ``NOW``, of a two-hour session."""
+    fields: dict[str, Any] = dict(
+        transcript_path=Path("/c/projects/-home-u-p/s.jsonl"),
+        transcript_size=100,
+        transcript_mtime_ns=1_000,
+        scanned_at=ago(hours=1),
+        turns=12,
+        input_tokens=1_234,
+        output_tokens=56_789,
+        cache_read_tokens=2_000_000,
+        cache_write_tokens=30_000,
+        models=(("claude-opus-5", 30), ("claude-fable-5-1", 4)),
+        tools=(("Bash", 20), ("Edit", 5)),
+        first_at=ago(hours=3),
+        last_at=ago(hours=1),
+    )
+    fields.update(overrides)
+    return Figures(**fields)
+
+
+def test_describe_ends_with_the_deep_scan_figures_or_the_command_that_makes_them() -> (
+    None
+):
+    """The figures come last. Without any, one line names the command to run."""
+    fmt = Formatter(Settings(), now=NOW)
+
+    with_figures = fmt.describe(SessionDetails(session(), 0, figures()))
+    without = fmt.describe(SessionDetails(session(), 0))
+
+    assert [label for label, _ in with_figures][-7:] == [
+        "Damaged",
+        "Turns",
+        "Tokens",
+        "Cache tokens",
+        "Models",
+        "Duration",
+        "Tool calls",
+        "Scanned",
+    ][1:]
+    assert [label for label, _ in without][-2:] == ["Damaged", "Deep scan"]
+    assert dict(without)["Deep scan"] == "none  (run 'conclaude scan')"
+
+
+def test_describe_figures_names_every_number_in_full() -> None:
+    """Every number is exact, with separators. Models and tools carry their counts."""
+    fmt = Formatter(Settings(), now=NOW)
+
+    lines = fmt.describe_figures(figures())
+
+    assert lines == [
+        ("Turns", "12"),
+        ("Tokens", "2,088,023  (1,234 in, 56,789 out)"),
+        ("Cache tokens", "2,000,000 read, 30,000 written"),
+        ("Models", "claude-opus-5 (30), claude-fable-5-1 (4)"),
+        ("Duration", "2h"),
+        ("Tool calls", "25  (Bash 20, Edit 5)"),
+        ("Scanned", "1h ago"),
+    ]
+
+
+def test_describe_figures_with_nothing_counted_shows_dashes_not_blanks() -> None:
+    """A scan that found no answer at all still reports, with a dash for the models."""
+    fmt = Formatter(Settings(), now=NOW)
+
+    lines = dict(
+        fmt.describe_figures(
+            figures(models=(), tools=(), first_at=None, last_at=None, turns=0)
+        )
+    )
+
+    assert lines["Turns"] == "0"
+    assert lines["Models"] == "-"
+    assert lines["Duration"] == "-"
+    assert lines["Tool calls"] == "0"
+
+
+def test_stale_figures_carry_the_label_on_every_value_and_say_why() -> None:
+    """Old numbers stay on view. In the details each carries the stale label in
+    front, a word, and the last line says the transcript changed since. The
+    short mark is for a table cell. Both come from the settings.
+    """
+    fmt = Formatter(Settings(), now=NOW)
+    own = Formatter(Settings(stale_mark="?", stale_label="OLD"), now=NOW)
+
+    lines = dict(fmt.describe_figures(figures(stale=True)))
+    marked = dict(own.describe_figures(figures(stale=True)))
+
+    assert lines["Turns"] == "(outdated) 12"
+    assert lines["Tokens"] == "(outdated) 2,088,023  (1,234 in, 56,789 out)"
+    assert lines["Cache tokens"] == "(outdated) 2,000,000 read, 30,000 written"
+    assert lines["Models"] == "(outdated) claude-opus-5 (30), claude-fable-5-1 (4)"
+    assert lines["Duration"] == "(outdated) 2h"
+    assert lines["Tool calls"] == "(outdated) 25  (Bash 20, Edit 5)"
+    assert lines["Scanned"] == (
+        "1h ago  (the transcript changed since; run 'conclaude scan')"
+    )
+    assert marked["Turns"] == "OLD 12"
+    assert fmt.stale("12", figures(stale=True)) == "*12"
+    assert own.stale("12", figures(stale=True)) == "?12"
+    assert fmt.stale("12", figures()) == "12"
+    assert fmt.outdated("12", figures()) == "12"
 
 
 def entry(size: int, parts: tuple[Part, ...] = ()) -> TrashEntry:

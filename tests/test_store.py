@@ -19,14 +19,16 @@ from datetime import datetime, timezone
 
 import pytest
 
-from conclaude.core.errors import AmbiguousSessionId, SessionNotFound
+from conclaude.core.errors import AmbiguousSessionId, ScanFailed, SessionNotFound
 from conclaude.core.settings import Settings
 from conclaude.core.store import SORT_COLUMNS, SessionStore, sort_key
 from tests.fabricate import (
     FakeClaude,
+    answer_records,
     dump_line,
     encode_project,
     new_id,
+    prompt_record,
     session_records,
 )
 
@@ -465,7 +467,9 @@ def test_sort_order_comes_from_the_settings(
 
 
 def test_any_column_can_sort(fake: FakeClaude, settings: Settings) -> None:
-    """Any column can sort. An unknown column, and the empty Msgs, keep last used."""
+    """Any column can sort. An unknown column keeps last used, and so does Msgs with
+    nothing scanned yet.
+    """
     older, newer = new_id(), new_id()
     fake.transcript(
         "/p/z",
@@ -496,12 +500,139 @@ def test_any_column_can_sort(fake: FakeClaude, settings: Settings) -> None:
     assert ordered["last_used"] == [older, newer]
     assert ordered["created"] == [older, newer]
     assert ordered["size"] == [newer, older]
-    assert ordered["msgs"] == [newer, older]
+    assert ordered["msgs"] == [older, newer]
     assert ordered["project"] == [newer, older]
     assert ordered["nonsense"] == [older, newer]
+
+
+def test_msgs_orders_by_the_cached_turn_count_and_the_unscanned_go_last(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Msgs orders by the turn count in the figures given. A session with no
+    figures orders below every scanned one, and below that by last use.
+    """
+    quiet, busy, unscanned = new_id(), new_id(), new_id()
+    fake.transcript(PROJECT, quiet, session_records(quiet, PROJECT), mtime=1000)
+    busy_records = session_records(busy, PROJECT) + [prompt_record(busy, "More")]
+    fake.transcript(PROJECT, busy, busy_records, mtime=2000)
+    fake.transcript(PROJECT, unscanned, mtime=3000)
+    store = SessionStore(settings)
+    sessions = store.list_sessions()
+    for session in sessions:
+        if session.id != unscanned:
+            store.scan_of(session)
+    figures = store.figures_for(sessions)
+
+    biggest_first = sorted(sessions, key=sort_key("msgs", figures), reverse=True)
+
+    assert set(figures) == {quiet, busy}
+    assert [s.id for s in biggest_first] == [busy, quiet, unscanned]
 
 
 def test_a_missing_claude_folder_lists_nothing(settings: Settings) -> None:
     """A missing claude folder lists nothing."""
     assert SessionStore(settings).list_sessions() == []
     assert SessionStore(settings).list_projects() == []
+
+
+def test_details_take_the_figures_from_the_cache_and_never_scan(
+    fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Details carry the cached figures. With none cached they carry None, and no
+    transcript is read in full for them.
+    """
+    sid = new_id()
+    records = session_records(sid, PROJECT) + answer_records(sid, tools=["Bash"])
+    fake.transcript(PROJECT, sid, records)
+    store = SessionStore(settings)
+    session = store.find_session(sid)
+
+    before = store.details_of(session)
+    scanned = store.scan_of(session)
+    monkeypatch.setattr(
+        "conclaude.core.store.deep_scan", lambda *_: pytest.fail("scanned again")
+    )
+    after = store.details_of(session)
+    again = store.scan_of(session)
+
+    assert before.figures is None
+    assert before.to_dict()["figures"] is None
+    assert after.figures == scanned
+    assert after.figures is not None and after.figures.stale is False
+    assert after.to_dict()["figures"]["turns"] == 1
+    assert again == scanned
+
+
+def test_a_scan_reads_again_when_the_transcript_changed_or_when_forced(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Fresh figures are handed back as they are. Stale ones are replaced by a new
+    read, and so are fresh ones when the caller insists.
+    """
+    sid = new_id()
+    path = fake.transcript(PROJECT, sid, session_records(sid, PROJECT))
+    store = SessionStore(settings)
+    session = store.find_session(sid)
+    first = store.scan_of(session)
+
+    with open(path, "ab") as handle:
+        handle.write(dump_line(prompt_record(sid, "More")))
+    stale = store.figures_of(session)
+    second = store.scan_of(session)
+    third = store.scan_of(session, force=True)
+
+    assert first.turns == 1
+    assert stale is not None and stale.stale is True and stale.turns == 1
+    assert second.turns == 2 and second.stale is False
+    assert third.turns == 2 and third.scanned_at >= second.scanned_at
+
+
+def test_a_scan_of_an_unreadable_transcript_names_the_file(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A transcript that goes away between the list and the scan raises, with its path."""
+    sid = new_id()
+    path = fake.transcript(PROJECT, sid)
+    store = SessionStore(settings)
+    session = store.find_session(sid)
+    path.unlink()
+
+    with pytest.raises(ScanFailed, match="could not read") as caught:
+        store.scan_of(session)
+
+    assert caught.value.path == path
+    assert caught.value.session_id == sid
+
+
+def test_a_deep_scan_never_holds_the_whole_transcript(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A deep scan reads line by line. Its peak memory stays far below the file size."""
+    sid = new_id()
+    big = "x" * 64 * 1024
+    records: list = session_records(sid, PROJECT)
+    records += [
+        {
+            "type": "assistant",
+            "uuid": new_id(),
+            "message": {"role": "assistant", "content": big},
+            "sessionId": sid,
+        }
+        for _ in range(200)
+    ]
+    path = fake.transcript(PROJECT, sid, records)
+    assert path.stat().st_size > 12 * 1024 * 1024
+    store = SessionStore(settings)
+    session = store.find_session(sid)
+
+    tracemalloc.start()
+    try:
+        figures = store.scan_of(session)
+        _current, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert figures.turns == 1
+    assert (
+        peak < 2 * 1024 * 1024
+    ), f"peak {peak} bytes for a {path.stat().st_size} byte file"
