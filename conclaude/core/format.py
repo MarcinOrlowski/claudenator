@@ -53,11 +53,11 @@ class Formatter:
     """Helper to format values in human friendly form."""
 
     def __init__(self, settings: Settings, now: datetime | None = None) -> None:
-        if settings.time_format not in TIME_FORMATS:
-            allowed = ", ".join(TIME_FORMATS)
-            raise ValueError(
-                f"time_format must be one of {allowed}, not '{settings.time_format}'"
-            )
+        for name in ("time_format", "details_time_format"):
+            value = getattr(settings, name)
+            if value not in TIME_FORMATS:
+                allowed = ", ".join(TIME_FORMATS)
+                raise ValueError(f"{name} must be one of {allowed}, not '{value}'")
         self.settings = settings
         self._now = now
 
@@ -102,15 +102,29 @@ class Formatter:
         """A whole number with a separator every three digits: ``1,234,567``."""
         return f"{value:,}"
 
-    def timestamp(self, moment: datetime | None) -> str:
-        """Formats stamp or returns ``-`` when there is none."""
+    def timestamp(self, moment: datetime | None, form: str = "") -> str:
+        """Formats stamp or returns ``-`` when there is none.
+
+        ``form`` is ``absolute``, ``relative`` or ``both``. With no ``form`` the
+        settings say which one, through ``time_format``.
+        """
         if moment is None:
             return "-"
-        if self.settings.time_format == "relative":
+        form = form or self.settings.time_format
+        if form == "relative":
             return self.relative(moment)
-        if self.settings.time_format == "both":
+        if form == "both":
             return f"{self.absolute(moment)} ({self.relative(moment)})"
         return self.absolute(moment)
+
+    def details_timestamp(self, moment: datetime | None) -> str:
+        """A stamp for the details, where one thing at a time has the room for all of it.
+
+        The settings say which form, through ``details_time_format``: both the
+        exact moment and how long ago it was. A column stays short and keeps
+        ``time_format``.
+        """
+        return self.timestamp(moment, self.settings.details_time_format)
 
     def day(self, moment: datetime) -> str:
         """The local calendar day for grouping."""
@@ -208,8 +222,8 @@ class Formatter:
             ("Project", f"{session.project_path}  (from {session.project_source})"),
             ("Folder", str(session.transcript_path.parent)),
             ("Git branch", session.git_branch or "-"),
-            ("Created", self.timestamp(session.created)),
-            ("Last used", self.timestamp(session.last_used)),
+            ("Created", self.details_timestamp(session.created)),
+            ("Last used", self.details_timestamp(session.last_used)),
             ("Claude Code", session.version or "-"),
             (
                 "Transcript",
@@ -288,7 +302,7 @@ class Formatter:
                 self.outdated(f"{calls}  ({tools})" if tools else calls, figures),
             ),
         ]
-        scanned = self.timestamp(figures.scanned_at)
+        scanned = self.details_timestamp(figures.scanned_at)
         if figures.stale:
             scanned += "  (the transcript changed since; run 'conclaude scan')"
         lines.append(("Scanned", scanned))
@@ -338,7 +352,7 @@ class Formatter:
             ("Session", entry.session_id),
             ("Title", entry.title),
             ("Project", entry.project_path),
-            ("Trashed", self.timestamp(entry.trashed_at)),
+            ("Trashed", self.details_timestamp(entry.trashed_at)),
             ("Reason", entry.reason or "-"),
             ("Size", self.size(entry.size)),
             ("Entry", str(entry.path)),

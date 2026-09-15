@@ -68,7 +68,11 @@ class Settings:
     confirm_delete: bool = False
 
     # How to format dates. See ``format.Formatter``.
+    # ``time_format`` holds for a column, where the room is short. The details
+    # name one thing at a time and have the room for all of it, so they show
+    # both forms: the exact moment, and how long ago it was.
     time_format: str = "relative"
+    details_time_format: str = "both"
     time_pattern: str = "%Y-%m-%d %H:%M:%S"
     # A calendar day, for grouping Trash entries
     day_pattern: str = "%Y-%m-%d"

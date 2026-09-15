@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from conclaude.core.format import Formatter
+from conclaude.core.format import TIME_FORMATS, Formatter
 from conclaude.core.model import Figures, Part, Session, SessionDetails, TrashEntry
 from conclaude.core.settings import Settings
 
@@ -105,10 +105,30 @@ def test_a_count_carries_a_separator_every_three_digits() -> None:
     assert fmt.count(83321309) == "83,321,309"
 
 
+def test_the_details_hold_the_moment_and_how_long_ago_whatever_a_column_holds() -> None:
+    """A column is short and follows ``time_format``. The details have the room for both.
+
+    ``details_time_format`` names the form the details take, and ``both`` is the default.
+    """
+    moment = ago(days=3, hours=23)
+    seen = [
+        Formatter(Settings(time_format=name), now=NOW).details_timestamp(moment)
+        for name in TIME_FORMATS
+    ]
+    own = Formatter(Settings(details_time_format="relative"), now=NOW)
+
+    assert seen == [f"{own.absolute(moment)} (3d 23h ago)"] * 3
+    assert own.details_timestamp(moment) == "3d 23h ago"
+    assert own.details_timestamp(None) == "-"
+    assert Settings().details_time_format == "both"
+
+
 def test_an_unknown_time_format_is_refused() -> None:
-    """An unknown time format is refused."""
+    """An unknown time format is refused, for a column and for the details."""
     with pytest.raises(ValueError, match="time_format must be one of"):
         Formatter(Settings(time_format="fancy"))
+    with pytest.raises(ValueError, match="details_time_format must be one of"):
+        Formatter(Settings(details_time_format="fancy"))
 
 
 def test_now_is_live_unless_fixed() -> None:
@@ -354,7 +374,7 @@ def test_describe_figures_names_every_number_in_full() -> None:
         ("Models", "claude-opus-5 (30), claude-fable-5-1 (4)"),
         ("Duration", "2h"),
         ("Tool calls", "25  (Bash 20, Edit 5)"),
-        ("Scanned", "1h ago"),
+        ("Scanned", f"{fmt.absolute(ago(hours=1))} (1h ago)"),
     ]
 
 
@@ -419,7 +439,8 @@ def test_stale_figures_carry_the_label_on_every_value_and_say_why() -> None:
     assert lines["Duration"] == "(outdated) 2h"
     assert lines["Tool calls"] == "(outdated) 25  (Bash 20, Edit 5)"
     assert lines["Scanned"] == (
-        "1h ago  (the transcript changed since; run 'conclaude scan')"
+        f"{fmt.absolute(ago(hours=1))} (1h ago)"
+        "  (the transcript changed since; run 'conclaude scan')"
     )
     assert marked["Turns"] == "OLD 12"
     assert fmt.stale("12", figures(stale=True)) == "*12"
@@ -496,7 +517,8 @@ def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -
         ("Session", "s"),
         ("Title", "Hello"),
         ("Project", "/home/u/p"),
-        ("Trashed", fmt.timestamp(NOW)),
+        # The details hold both forms, whatever a column shows.
+        ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
         ("Reason", "-"),
         ("Size", "2.1K"),
         ("Entry", "/t/2026-09-14T12-00-00_s"),

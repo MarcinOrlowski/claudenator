@@ -526,8 +526,8 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
     assert "Project:     /p/x  (from transcript)" in text
     assert re.search(r"^Folder: +\S+/claude/projects/-p-x$", text, re.M)
     assert "Git branch:  dev" in text
-    assert f"Created:     {fmt.timestamp(session.created)}" in text
-    assert f"Last used:   {fmt.timestamp(session.last_used)}" in text
+    assert f"Created:     {fmt.details_timestamp(session.created)}" in text
+    assert f"Last used:   {fmt.details_timestamp(session.last_used)}" in text
     assert "Claude Code: 2.1.270" in text
     assert f"Transcript:  {fmt.size(session.transcript_size)}  {sid}.jsonl" in text
     assert (
@@ -537,6 +537,29 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
     assert f"Total:       {fmt.size(session.size)}" in text
     assert "Live:        yes  (pid 4242)" in text
     assert "Fork of:" not in text
+
+
+async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_not(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The details have the room, so every time in them holds both forms.
+
+    The 'Last used' column of the sessions pane holds one form, the short one,
+    because a column has no room for more.
+    """
+    sid = new_id()
+    fake.transcript("/p/x", sid)
+    app = ConclaudeApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        text = app.query_one(DetailsPane).text
+        cell = str(app.query_one(SessionsPane).get_cell(sid, "last_used"))
+
+    both = r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \((just now|[\dymdhs ]+ ago)\)"
+    assert re.search(rf"^Created: +{both}$", text, re.M)
+    assert re.search(rf"^Last used: +{both}$", text, re.M)
+    assert re.fullmatch(r"just now|[\dymdhs ]+ ago", cell)
+    assert settings.time_format == "relative"
 
 
 async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
@@ -1429,7 +1452,8 @@ async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
     assert painted == first
     assert first.splitlines() == expected
     assert re.search(rf"^Session: +{sid}$", first, re.M)
-    assert re.search(rf"^Trashed: +{re.escape(fmt.timestamp(later))}$", first, re.M)
+    stamp = re.escape(fmt.details_timestamp(later))
+    assert re.search(rf"^Trashed: +{stamp}$", first, re.M)
     assert re.search(r"^Reason: +pressed d$", first, re.M)
     assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):

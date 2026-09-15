@@ -86,5 +86,6 @@ def test_screen_defaults_are_present() -> None:
     assert 0 < settings.min_height
     assert settings.confirm_delete is False
     assert settings.time_format == "relative"
+    assert settings.details_time_format == "both"
     assert settings.cut_mark
     assert 0 <= settings.cut_head_share <= 1
