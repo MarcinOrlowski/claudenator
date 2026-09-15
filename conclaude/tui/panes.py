@@ -16,6 +16,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
+from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -105,6 +106,26 @@ BIGGEST_FIRST = {"state", "last_used", "size", "msgs"}
 
 # The mark on the label of the column that sorts the rows.
 SORT_MARK = {True: " ▼", False: " ▲"}
+
+# The colours a session row can take. The stylesheet gives each one a theme
+# variable, so all 20 themes fit. See ``state_class``.
+STATE_CLASSES = {"sessions--damaged", "sessions--live", "sessions--fork"}
+
+
+def state_class(session: Session) -> str:
+    """The class that colours the row of ``session``, or ``""`` for the plain colour.
+
+    A row holds one colour only, so the states come in an order: a damaged
+    session first, then a live one, then a fork. The State column says the same
+    thing in letters, so the colour is never the only clue.
+    """
+    if session.damaged:
+        return "sessions--damaged"
+    if session.live:
+        return "sessions--live"
+    if session.is_fork:
+        return "sessions--fork"
+    return ""
 
 
 def flexible_widths(room: int, padding: int, two: bool) -> tuple[int, int]:
@@ -499,6 +520,7 @@ class SessionsPane(Table):
     ]
     ROW_ACTIONS = frozenset({"trash", "open", "scan", "scan_all"})
     NOUN = "session"
+    COMPONENT_CLASSES = STATE_CLASSES
 
     class Chosen(Table.Chosen):
         """The cursor moved to a session, or the table went empty (``None``)."""
@@ -723,6 +745,31 @@ class SessionsPane(Table):
         )
         room = self.size.width - SCROLLBAR_WIDTH - fixed
         return flexible_widths(room, padding, self._with_project)
+
+    def _session_at(self, row_index: int) -> Session | None:
+        """The session on the row at ``row_index``, or None when there is none."""
+        if not 0 <= row_index < self.row_count:
+            return None
+        key = self.ordered_rows[row_index].key.value
+        return self._by_id.get(key) if key is not None else None
+
+    def _get_row_style(self, row_index: int, base_style: Style) -> Style:
+        """Give the row at ``row_index`` the colour of its state.
+
+        The table asks for this every time it draws a row, so the colour
+        follows the theme in effect with no rebuild, and the row under the
+        cursor keeps the colours of the cursor. The class comes from
+        ``state_class`` and the colour itself from the stylesheet.
+        """
+        style = super()._get_row_style(row_index, base_style)
+        session = self._session_at(row_index)
+        name = state_class(session) if session is not None else ""
+        if not name:
+            return style
+        own = self.get_component_rich_style(name)
+        # The colour alone goes on the row. The background stays as it is, so
+        # the cursor, the hover and the pane itself all hold their own.
+        return style + own.without_color + Style.from_color(color=own.color)
 
     def _rebuild(self) -> None:
         """Put the rows back."""

@@ -66,6 +66,26 @@ SessionsPane, EntriesPane {
     height: 1fr;
 }
 
+/* A session row takes its colour from its state. A row holds one colour only,
+   so a damaged session comes before a live one, and a live one before a fork.
+   The State column says the same in letters, so a colour-blind eye and a
+   screen with no colour lose nothing. The row under the cursor keeps the
+   colours of the cursor, so it stays easy to read in every theme. */
+SessionsPane > .sessions--damaged {
+    color: $text-error;
+}
+
+SessionsPane > .sessions--live {
+    color: $text-success;
+}
+
+/* Not $text-muted, which the two ANSI themes leave as the plain colour, and
+   not $text-secondary, which monokai makes the same as $text-error. This one
+   is a colour of its own in all 20 themes. */
+SessionsPane > .sessions--fork {
+    color: $text-primary;
+}
+
 DetailsPane, EntryPane {
     height: auto;
     max-height: 50%;
