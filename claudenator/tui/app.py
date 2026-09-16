@@ -40,6 +40,7 @@ from claudenator.tui.panes import (
     EntryPane,
     FilterBox,
     FilterWanted,
+    KeyBar,
     Lines,
     Lister,
     ProjectsPane,
@@ -47,7 +48,7 @@ from claudenator.tui.panes import (
     Table,
     TitleBar,
     TooSmall,
-    label_trash_key,
+    ViewWanted,
 )
 from claudenator.tui.settings import SettingsChanged, SettingsScreen
 
@@ -138,12 +139,7 @@ class PaneScreen(Screen[ScreenResultType]):
         return TooSmall(settings.min_width, settings.min_height)
 
     def _size_left(self, stacked: bool) -> None:
-        """Size the left pane from the settings, for the layout in effect.
-
-        Side by side, it takes a share of the width, between the two limits the
-        settings give. In one column, it takes the same share of the height,
-        never below the limit the settings give, and the full width.
-        """
+        """Size the left pane from the settings"""
         settings = self.store.settings
         share = f"{settings.projects_pane_share:.0%}"
         left = self.query_one("#left")
@@ -161,13 +157,9 @@ class PaneScreen(Screen[ScreenResultType]):
             left.styles.min_height = 0
 
     def _fit_window(self) -> None:
-        """Give the layout the shape the window has room for.
+        """Gives the layout the shape the window can fit.
 
-        A narrow window puts the panes in one column, one over the other, so
-        that every one of them keeps the full width. No pane ever goes out of
-        view on its own. Under the smallest window that works, a plain message
-        takes the place of them all. Every width comes from the settings
-        object, and no step is one way: the layout goes back as the window grows.
+        A narrow window puts the panes in one column, one over the other,
         """
         settings = self.store.settings
         width, height = self.size
@@ -184,9 +176,7 @@ class PaneScreen(Screen[ScreenResultType]):
         """Hold the focus on a pane through every change of size.
 
         A window with no room for the panes takes them out of view, and the
-        library drops the focus with them. The keys of the pane go too, and a
-        window that answers no key at all would trap the user. So the table
-        takes the focus back: it is the pane the user works in.
+        library drops the focus with them.
         """
         focused = self.focused
         if focused is not None and all(
@@ -208,8 +198,17 @@ class PaneScreen(Screen[ScreenResultType]):
             lines.repaint()
 
     def _show_trash(self, entries: list[TrashEntry]) -> None:
-        """The 't' key says how much the Trash holds now."""
-        label_trash_key(self, self.fmt.trash_key(entries))
+        """The Trash name in the title bar says how much the Trash holds now."""
+        self.query_one(TitleBar).label_trash(self.fmt.trash_key(entries))
+
+    def on_view_wanted(self, event: ViewWanted) -> None:
+        """A click on the other name in the title bar: switch, as its key does."""
+        event.stop()
+        self.switch_view()
+
+    def switch_view(self) -> None:
+        """Go to the other view. Each screen names which one that is."""
+        raise NotImplementedError
 
 
 class MainScreen(PaneScreen[None]):
@@ -236,7 +235,7 @@ class MainScreen(PaneScreen[None]):
                 yield FilterBox(sessions)
                 yield DetailsPane(self.fmt)
         yield self._too_small()
-        yield Footer()
+        yield KeyBar()
 
     def on_mount(self) -> None:
         """Shape the layout and order the table from the settings, fill and focus."""
@@ -249,12 +248,7 @@ class MainScreen(PaneScreen[None]):
         self._focus_start_pane()
 
     def _focus_start_pane(self) -> None:
-        """Give the focus to the pane the settings name.
-
-        The projects pane still opens on 'All projects', so the sessions pane
-        lists every session whichever pane holds the focus. A name the settings
-        do not know gives the sessions pane.
-        """
+        """Give the focus to the specific pane set in settings."""
         wanted = self.store.settings.start_pane
         pane = ProjectsPane if wanted == "projects" else SessionsPane
         self.query_one(pane).focus()
@@ -285,6 +279,10 @@ class MainScreen(PaneScreen[None]):
     def action_trash_mode(self) -> None:
         """The 't' key: the panes switch to the Trash."""
         self.app.push_screen(TrashScreen(self.store, self.fmt), self._back_from_trash)
+
+    def switch_view(self) -> None:
+        """The other view is the Trash."""
+        self.action_trash_mode()
 
     def on_projects_pane_chosen(self, event: ProjectsPane.Chosen) -> None:
         """List sessions of highlighted project."""
@@ -317,18 +315,13 @@ class MainScreen(PaneScreen[None]):
             )
 
     def on_sessions_pane_scan_wanted(self, event: SessionsPane.ScanWanted) -> None:
-        """The 's' key: deep-scan the session under the cursor.
-
-        Its row and its details take the figures, and a word says what was
-        counted. Figures already fresh in the cache are used as they are:
-        nothing is read twice.
-        """
+        """Deep-scan the session under the cursor."""
         self._scan([event.session], alone=True)
 
     def on_sessions_pane_scan_all_wanted(
         self, event: SessionsPane.ScanAllWanted
     ) -> None:
-        """The 'S' key: deep-scan every session on view, in the background."""
+        """The 'C' key: deep-scan every session on view, in the background."""
         count = len(event.sessions)
         self.notify(
             f"Reading {count} {plural_of('transcript', count)}", title="Deep scan"
@@ -454,7 +447,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
                 yield FilterBox(entries)
                 yield EntryPane(self.fmt)
         yield self._too_small()
-        yield Footer()
+        yield KeyBar()
 
     def on_mount(self) -> None:
         """Shape the layout, fill, and focus the entries: that is where the keys are."""
@@ -479,8 +472,12 @@ class TrashScreen(PaneScreen[TrashVisit]):
         super().refresh_settings()
 
     def action_sessions_mode(self) -> None:
-        """The 't' key: the panes switch back to the sessions."""
+        """The 's' key: the panes switch back to the sessions."""
         self.dismiss(TrashVisit(self._entries, self._restored))
+
+    def switch_view(self) -> None:
+        """The other view is the sessions."""
+        self.action_sessions_mode()
 
     def on_days_pane_chosen(self, event: DaysPane.Chosen) -> None:
         """List the entries that went in on the highlighted day."""
@@ -559,9 +556,17 @@ class ClaudenatorApp(App[None]):
     TITLE = __title__
     CSS_PATH = "claudenator.tcss"
 
-    # Textual's own command box, on 'ctrl+p', is not part of this tool. Off, it
-    # takes its key and its footer entry with it.
+    # Disable Textual's own command palette
     ENABLE_COMMAND_PALETTE = False
+
+    # We want some keys to be spelled differently than Textual thinks.
+    KEY_NAMES = {"enter": "ENTER", "escape": "ESC", "tab": "TAB", "f2": "F2"}
+
+    def get_key_display(self, binding: Binding) -> str:
+        """The key as the user reads it, the same wherever the tool names one."""
+        if binding.key_display:
+            return binding.key_display
+        return self.KEY_NAMES.get(binding.key) or super().get_key_display(binding)
 
     def __init__(
         self, settings: Settings | None = None, notes: list[str] | None = None

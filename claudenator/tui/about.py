@@ -13,16 +13,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Final
 
 from qrcat import render_qr
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Static
 
 from claudenator import __author__, __description__, __title__, __url__, __version__
+from claudenator.tui.panes import key_help
 
 # The lowest error level makes the smallest code that holds the address
 QR_ERROR: Final = "L"
@@ -48,6 +50,20 @@ def about_text() -> str:
     )
 
 
+def key_text(name_of: Callable[[Binding], str]) -> str:
+    """Every key of the tool"""
+    groups = [
+        (title, [(name_of(binding), binding.description) for binding in bindings])
+        for title, bindings in key_help()
+    ]
+    width = max(len(key) for _title, rows in groups for key, _what in rows)
+    lines: list[str] = []
+    for title, rows in groups:
+        lines.append(title)
+        lines += [f"  {key.ljust(width)}  {what}" for key, what in rows]
+    return "\n".join(lines)
+
+
 class AboutScreen(ModalScreen[None]):
     """About popup"""
 
@@ -65,8 +81,11 @@ class AboutScreen(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         box = VerticalScroll(id="about")
         box.border_title = "About"
-        with box:
+        with box, Horizontal(id="about-columns"):
             yield Static(self.text, id="about-text", markup=False)
+            # The app says how a key reads, so the box and the footer agree.
+            keys = key_text(self.app.get_key_display)
+            yield Static(keys, id="about-keys", markup=False)
         yield Footer()
 
     def action_close(self) -> None:

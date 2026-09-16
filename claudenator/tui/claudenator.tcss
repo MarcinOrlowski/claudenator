@@ -4,18 +4,34 @@ Screen {
     layout: vertical;
 }
 
-/* The top line: the view on the left, the tool and its version on the right. */
+/* The top header line */
 #title-bar {
     height: 1;
     background: $panel;
     color: $foreground;
 }
 
-#view {
-    width: 1fr;
+.view-name {
+    width: auto;
     padding: 0 1;
+    color: $text-muted;
     text-wrap: nowrap;
-    text-overflow: ellipsis;
+}
+
+/* The view on screen. */
+.view-name.-on {
+    background: $block-cursor-background;
+    color: $block-cursor-foreground;
+    text-style: bold;
+}
+
+.view-name:hover {
+    background: $block-hover-background;
+}
+
+/* The room between the view names and the tool. */
+#title-gap {
+    width: 1fr;
 }
 
 #brand {
@@ -23,8 +39,7 @@ Screen {
     padding: 0 0 0 1;
 }
 
-/* The 'about' key, at the right of the brand. The colour is the one the footer
-   gives its own keys, so a key reads the same in both places. */
+/* The 'about' key colored as Textual's shortcuts. A click opens the box. */
 #about-key {
     width: auto;
     padding: 0 1;
@@ -32,12 +47,15 @@ Screen {
     text-style: bold;
 }
 
+#about-key:hover {
+    background: $block-hover-background;
+}
+
 #body {
     height: 1fr;
 }
 
-/* A window too narrow for two columns holds the panes in one, so that every
-   pane keeps the full width. The width that does this comes from settings. */
+/* A window too narrow for two columns puts the panes in single vertical one. */
 #body.-stacked {
     layout: vertical;
 }
@@ -58,10 +76,13 @@ ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane, Filte
     border-title-color: $text-muted;
 }
 
+/* The keys of the pane itself sit on the bottom-right of its own frame. See ``KEY_STYLE``. */
 ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus,
 DaysPane:focus, EntriesPane:focus, EntryPane:focus, FilterBox:focus {
     border: round $border;
     border-title-color: $text;
+    border-subtitle-color: $text;
+    border-subtitle-align: right;
 }
 
 ProjectsPane, DaysPane {
@@ -75,11 +96,7 @@ SessionsPane, EntriesPane {
     height: 1fr;
 }
 
-/* A session row takes its colour from its state. A row holds one colour only,
-   so a damaged session comes before a live one, and a live one before a fork.
-   The State column says the same in letters, so a colour-blind eye and a
-   screen with no colour lose nothing. The row under the cursor keeps the
-   colours of the cursor, so it stays easy to read in every theme. */
+/* A session row is colored based onb session state (Live, Forked…) */
 SessionsPane > .sessions--damaged {
     color: $text-error;
 }
@@ -88,9 +105,7 @@ SessionsPane > .sessions--live {
     color: $text-success;
 }
 
-/* Not $text-muted, which the two ANSI themes leave as the plain colour, and
-   not $text-secondary, which monokai makes the same as $text-error. This one
-   is a colour of its own in all 20 themes. */
+/* This one is a colour of its own in all 20 themes. */
 SessionsPane > .sessions--fork {
     color: $text-primary;
 }
@@ -101,7 +116,7 @@ DetailsPane, EntryPane {
     padding: 0 1;
 }
 
-/* The pane cuts a long line itself. This is the net under it: no wrap, ever. */
+/* The pane cuts a long line itself. */
 DetailsPane Static, EntryPane Static {
     text-wrap: nowrap;
     text-overflow: ellipsis;
@@ -113,7 +128,14 @@ FilterBox {
     padding: 0 1;
 }
 
-/* The window has no room for the panes. This message takes their place. */
+/* The keys of the whole tool, at the right edge of the footer */
+#tool-keys {
+    dock: right;
+    width: auto;
+    height: 1;
+}
+
+/* Shown when window has no room for the panes. */
 #too-small {
     width: 1fr;
     height: 1fr;
@@ -121,7 +143,7 @@ FilterBox {
     text-align: center;
 }
 
-/* One session or one entry in full, over the whole window. */
+/* Full screen view of session details */
 #full {
     width: 1fr;
     height: 1fr;
@@ -141,8 +163,7 @@ AboutScreen {
     align: center middle;
 }
 
-/* As wide and as tall as its lines, but never past the window: a small
-   window scrolls the box instead of breaking the QR code. */
+/* As wide and as tall as its lines */
 #about {
     width: auto;
     height: auto;
@@ -154,9 +175,21 @@ AboutScreen {
     border-title-color: $text;
 }
 
+/* Key help. Key  Tool/Action. */
+#about-columns {
+    width: auto;
+    height: auto;
+}
+
 #about-text {
     width: auto;
     text-align: center;
+    text-wrap: nowrap;
+}
+
+#about-keys {
+    width: auto;
+    margin: 0 0 0 2;
     text-wrap: nowrap;
 }
 
@@ -175,7 +208,7 @@ ConfirmScreen {
     border-title-color: $text;
 }
 
-/* The thing the question is about. It never wraps */
+/* The thing the question is about */
 #confirm-subject {
     width: 1fr;
     padding: 1 0;
@@ -209,12 +242,10 @@ SettingsScreen {
     border-title-color: $text;
 }
 
-/* The sections take the room the buttons leave. */
 #settings > TabbedContent {
     height: 1fr;
 }
 
-/* The options of one section. */
 .option-page {
     height: 1fr;
     padding: 0 1;
@@ -225,12 +256,10 @@ SettingsScreen {
     width: 1fr;
 }
 
-/* A switch is as wide as a switch. */
 .option-row Switch {
     width: auto;
 }
 
-/* As wide as the longest name. */
 .option-label {
     width: 26;
     height: 3;
