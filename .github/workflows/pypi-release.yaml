@@ -50,16 +50,25 @@
 #    from a beta branch may reach PyPI, because an upload cannot be undone and
 #    the version number cannot be used again.
 #
-#    Two things that can guards that:
+#    Two things can guard that:
 #
 #      - This workflow. The RELEASE_BRANCH value below says "master", and the
 #        job stops when the tagged commit does not sit on that branch. To move
 #        the releases to another branch, change that one value.
 #      - The "pypi" environment. In Settings > Environments > pypi set
-#        "Deployment branches and tags" to "Selected branches and tags" and add
-#        a tag rule "v*". Careful: a tag push carries no branch info, so GitHub
-#        matches the TAG name here. This rule keeps stray runs out of the
-#        environment, but it cannot tell a tag on "master" from one on "dev".
+#        "Deployment branches and tags" to "Selected branches and tags", then
+#        add a rule of type TAG with the pattern "v*".
+#
+#        That page says "branches and tags", but every rule carries a type and
+#        GitHub reads only the type that fits the run. A tag push has no branch
+#        at all, so a BRANCH rule never lets it in. Three traps live here:
+#          * Give the short name "v*". A pattern "refs/tags/v*" matches nothing.
+#          * A "*" does not cross a "/". For "rel/2026/v1" you need "rel/*/*".
+#          * Never pick "Protected branches only". It turns every tag away, so
+#            no release would ever run.
+#
+#        This rule keeps stray runs out of the environment, but it still cannot
+#        tell a tag on "master" from one on "dev". Only the check above can.
 #
 # 5. To release: set __version__ in "claudenator/__init__.py", commit, then
 #    for consistency tag the code with the same version (i.e. "v1.2.3"):
