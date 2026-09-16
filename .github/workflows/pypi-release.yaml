@@ -74,6 +74,11 @@
 #    for consistency tag the code with the same version (i.e. "v1.2.3"):
 #      git tag v1.2.3 && git push origin v1.2.3
 #
+#    Push that one tag by name. "git push --follow-tags" also does the job, but
+#    it carries annotated tags only, so a plain "git tag" goes nowhere and no
+#    release runs. It can also take old tags along, and GitHub starts NOTHING
+#    at all when one push carries more than three tags.
+#
 # USING AN API TOKEN INSTEAD
 #
 # If you prefer a classic token, do this instead of steps 1 and 2:
