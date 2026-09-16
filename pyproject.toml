@@ -17,8 +17,7 @@ build-backend = "hatchling.build"
 name = "claudenator"
 dynamic = ["version"]
 description = "Hasta la vista, Claude sessions!"
-# The image links in README.md are absolute on purpose. PyPI renders this text
-# on its own domain, where a relative path gives a broken image.
+# The image links in README.md are absolute to make them render on PyPI too.
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
