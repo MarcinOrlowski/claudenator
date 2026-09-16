@@ -2,6 +2,7 @@
 
 ## v1.1.0 (TBD)
 
+* Updated the package metadata to match the project state.
 * Added `Makefile` with the build and release targets.
 * Added the workflow that publishes the package to PyPI.
 * Documented the installation from the GitHub repository.
