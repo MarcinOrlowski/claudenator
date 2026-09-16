@@ -35,10 +35,12 @@ from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, Project, Session, SessionDetails, TrashEntry
 from claudenator.core.store import sort_key
 
-# The keys every pane uses
+# The keys every pane uses. The left/right arrows walk the panes too
 SHARED_BINDINGS = [
     Binding("tab", "app.focus_next", "Next pane", show=False),
+    Binding("right", "app.focus_next", "Next pane", show=False),
     Binding("shift+tab", "app.focus_previous", "Previous pane", show=False),
+    Binding("left", "app.focus_previous", "Previous pane", show=False),
     # The frame of the focused pane shows this key
     Binding("r", "screen.reload", "Reload", show=False),
     Binding("f2", "app.settings", "Settings"),
@@ -96,6 +98,11 @@ ENTRIES_BINDINGS = [
     Binding("u", "restore", "Restore"),
     Binding("x", "purge", "Purge"),
 ]
+
+
+def plain_keys(keys: list[tuple[str, str]]) -> str:
+    """``keys`` as one line, in one colour: ``s Sessions  t Trash``."""
+    return KEY_GAP.join(f"{key} {what}" for key, what in keys)
 
 
 def key_line(keys: list[tuple[str, str]]) -> Content:
@@ -1118,47 +1125,41 @@ def view_id(name: str) -> str:
     return f"view-{name.lower()}"
 
 
-def keyed_name(name: str) -> str:
-    """``name`` with its key in brackets: ``[S]essions``.
-
-    The brackets mark the key with no colour at all, so a screen with no colour
-    loses nothing.
-    """
-    return f"[{name[:1]}]{name[1:]}"
-
-
-def view_label(name: str, plain: bool) -> Content:
-    """``name`` for the title bar, with its key in brackets.
-
-    ``plain`` leaves the key the colour of the rest, for the name on a
-    background of its own: there the two colours would fight.
-    """
-    if plain:
-        return Content(keyed_name(name))
-    return Content.assemble("[", (name[:1], KEY_STYLE), "]", name[1:])
-
-
 class ViewWanted(Message):
     """A click on the other name in the title bar asks for that view."""
 
 
 class ViewName(Static):
-    """One view by name in the title bar, with its key."""
+    """One view in the title bar: its key, then its name."""
 
-    def __init__(self, name: str, current: bool) -> None:
+    def __init__(self, key: str, name: str, current: bool) -> None:
         super().__init__(id=view_id(name), classes="view-name")
+        self.key = key
         self.current = current
         self.set_class(current, "-on")
         self.show_name(name)
 
     def show_name(self, name: str) -> None:
-        """Write the name again, with its key still in brackets."""
-        self.update(view_label(name, plain=self.current))
+        """Write the key and the name again."""
+
+        pair = [(self.key, name)]
+        self.update(Content(plain_keys(pair)) if self.current else key_line(pair))
 
     def on_click(self) -> None:
         """A click on the other name switches, as its key does. This one waits."""
         if not self.current:
             self.post_message(ViewWanted())
+
+
+class AboutKey(Static):
+    """The key that opens the About box, at the right of the title bar."""
+
+    def __init__(self, hint: str) -> None:
+        super().__init__(hint, id="about-key", markup=False)
+
+    def on_click(self) -> None:
+        """A click opens the box, as the key does."""
+        self.app.action_about()
 
 
 class TitleBar(Horizontal):
@@ -1169,19 +1170,19 @@ class TitleBar(Horizontal):
     # The 'about'/'help' shortcut
     ABOUT_HINT = "[?]"
 
-    # Every main view by name
-    VIEWS = ("Sessions", "Trash")
+    # Every main view: its key, then its name
+    VIEWS = ((TO_SESSIONS.key, "Sessions"), (TO_TRASH.key, "Trash"))
 
     def __init__(self, view: str) -> None:
         super().__init__(id="title-bar")
         self.view = view
 
     def compose(self) -> ComposeResult:
-        for name in self.VIEWS:
-            yield ViewName(name, current=name == self.view)
+        for key, name in self.VIEWS:
+            yield ViewName(key, name, current=name == self.view)
         yield Static("", id="title-gap")
         yield Static(self.BRAND, id="brand", markup=False)
-        yield Static(self.ABOUT_HINT, id="about-key", markup=False)
+        yield AboutKey(self.ABOUT_HINT)
 
     def label_trash(self, label: str) -> None:
         """Say how much the Trash holds now, on the name that opens it."""
@@ -1228,6 +1229,11 @@ class KeyBar(Footer):
 # The 'enter' key of a left pane.
 INTO_LIST = Binding("enter", "select", "Into its list", show=False)
 
+# Both arrows in one line, for the About box.
+WALK_PANES = Binding(
+    "right", "app.focus_next", "Walk the panes", key_display="← →", show=False
+)
+
 
 def key_help() -> list[tuple[str, list[Binding]]]:
     """Every key the tool answers, by group, for the About box.
@@ -1239,14 +1245,16 @@ def key_help() -> list[tuple[str, list[Binding]]]:
     """
     by_key = {binding.key: binding for binding in SHARED_BINDINGS}
     slash, clear = FILTER_BINDINGS
+    sessions_view, trash_view = TitleBar.VIEWS
     return [
-        (keyed_name("Sessions"), [*SESSIONS_BINDINGS, *SORT_BINDINGS]),
-        (keyed_name("Trash"), list(ENTRIES_BINDINGS)),
+        (plain_keys([sessions_view]), [*SESSIONS_BINDINGS, *SORT_BINDINGS]),
+        (plain_keys([trash_view]), list(ENTRIES_BINDINGS)),
         (
             "Every pane",
             [
                 INTO_LIST,
                 by_key["tab"],
+                WALK_PANES,
                 slash,
                 clear,
                 by_key["r"],

@@ -39,12 +39,16 @@ Screen {
     padding: 0 0 0 1;
 }
 
-/* The 'about' key colored as Textual's shortcuts */
+/* The 'about' key colored as Textual's shortcuts. A click opens the box. */
 #about-key {
     width: auto;
     padding: 0 1;
     color: $footer-key-foreground;
     text-style: bold;
+}
+
+#about-key:hover {
+    background: $block-hover-background;
 }
 
 #body {

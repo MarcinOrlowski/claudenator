@@ -104,11 +104,7 @@ def rows(table: DataTable) -> list[str]:
 
 
 def drawn_colours(table: SessionsPane, sid: str) -> set[str]:
-    """The colours the row of ``sid`` is drawn in, as the console names them.
-
-    The header holds the first line, so the first row comes right after it. A
-    row takes its colour whole, so the answer is one colour and no more.
-    """
+    """The colours the row of ``sid`` is drawn in"""
     line = rows(table).index(sid) + 1
     return {
         segment.style.color.name
@@ -118,11 +114,7 @@ def drawn_colours(table: SessionsPane, sid: str) -> set[str]:
 
 
 def left_on_view(app: ClaudenatorApp) -> bool:
-    """Whether the left pane is on view.
-
-    It goes out of view with the box around it, so its own ``display`` says
-    nothing. The box is the thing to look at.
-    """
+    """Whether the left pane is on view."""
     return bool(app.screen.query_one("#left").display)
 
 
@@ -521,11 +513,8 @@ async def test_the_columns_hold_state_title_last_used_size_and_an_empty_turn_cou
 async def test_the_state_column_holds_one_slot_for_every_state(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """The state column holds one slot per state, and the title keeps all its room.
+    """The state column holds one slot per state."""
 
-    A state that is on shows its letter, one that is off shows a dash. A session
-    in two states shows two letters, each in its own slot.
-    """
     running, parent, child, twin, broken = (new_id() for _ in range(5))
     fake.transcript(
         "/p/x", running, session_records(running, "/p/x", custom_title="Run")
@@ -839,7 +828,7 @@ async def test_the_selection_is_a_session_id_that_survives_a_change_of_project(
 
 
 async def test_with_no_session_at_all_the_panes_are_empty_but_the_screen_works(
-    _: FakeClaude, settings: Settings
+    fake: FakeClaude, settings: Settings
 ) -> None:
     """With no session at all the panes are empty but the screen works."""
     app = ClaudenatorApp(settings)
@@ -918,6 +907,54 @@ async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
     assert Settings().start_pane == "sessions"
 
 
+async def test_the_arrows_walk_the_panes_the_way_tab_does(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The right/left arrow keys act as tab/shift tab for pane navigation"""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        forward = [type(app.focused)]
+        for _ in range(3):
+            await pilot.press("right")
+            await pilot.pause()
+            forward.append(type(app.focused))
+        back = []
+        for _ in range(3):
+            await pilot.press("left")
+            await pilot.pause()
+            back.append(type(app.focused))
+        await pilot.press("slash", "a", "b", "c", "left", "left")
+        await pilot.pause()
+        box = app.screen.query_one("#sessions-filter", FilterBox)
+        typing = type(app.focused), box.cursor_position, box.value
+
+    assert forward == [SessionsPane, DetailsPane, ProjectsPane, SessionsPane]
+    assert back == [ProjectsPane, DetailsPane, SessionsPane]
+    assert typing == (FilterBox, 1, "abc")
+
+
+async def test_the_arrows_walk_the_panes_in_the_trash_too(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash view walks its panes on the arrows as well."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        walked = [type(app.focused)]
+        for _ in range(3):
+            await pilot.press("right")
+            await pilot.pause()
+            walked.append(type(app.focused))
+
+    assert walked == [EntriesPane, EntryPane, DaysPane, EntriesPane]
+
+
 async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -973,11 +1010,7 @@ async def test_the_footer_orders_the_keys_of_a_pane_by_the_row_then_the_list(
 async def test_the_footer_holds_the_keys_of_the_tool_at_its_right_edge(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """'F2 Settings' and 'q Quit' act on the whole tool, so they dock at the right.
-
-    They stand there on every pane and in both views, away from the keys that
-    act on the row under the cursor.
-    """
+    """'F2 Settings' and 'q Quit' are global, visible on every screen."""
     _a1, _a2, b1 = three_sessions(fake)
     SessionStore(settings).trash(b1)
     app = ClaudenatorApp(settings)
@@ -998,11 +1031,7 @@ async def test_the_footer_holds_the_keys_of_the_tool_at_its_right_edge(
 async def test_the_pane_with_the_focus_shows_its_own_keys_on_its_frame(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """A key that acts on a pane sits on the bottom edge of that pane's frame.
-
-    It works only in the pane that has the focus, so only that pane shows it. A
-    pane that cannot narrow its list shows the reload key alone.
-    """
+    """A key that acts on a pane sits on the bottom edge of that pane's frame."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -1718,12 +1747,12 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
     assert before == (
         MainScreen,
         SessionsPane,
-        [("[S]essions", True), ("[T]rash (1)", False)],
+        [("s Sessions", True), ("t Trash (1)", False)],
     )
     assert in_trash == (
         TrashScreen,
         EntriesPane,
-        [("[S]essions", False), ("[T]rash (1)", True)],
+        [("s Sessions", False), ("t Trash (1)", True)],
         [ALL_DAYS, fmt.day(entry.trashed_at)],
         ([entry.id], entry.id, 0),
         ["Title", "Trashed", "Size", "Project"],
@@ -1952,12 +1981,12 @@ async def test_the_title_bar_names_both_views_on_the_left_and_the_tool_on_the_ri
     assert (bar.x, bar.y, bar.width, bar.height) == (0, 0, WIDE[0], 1)
     assert first.x == 0
     assert hint.right == WIDE[0]
-    assert top.startswith(" [S]essions  [T]rash ")
+    assert top.startswith(" s Sessions  t Trash ")
     assert top.rstrip().endswith(end)
-    assert in_trash.startswith(" [S]essions  [T]rash ")
+    assert in_trash.startswith(" s Sessions  t Trash ")
     assert in_trash.rstrip().endswith(end)
-    assert on_sessions == [("[S]essions", True), ("[T]rash", False)]
-    assert on_trash == [("[S]essions", False), ("[T]rash", True)]
+    assert on_sessions == [("s Sessions", True), ("t Trash", False)]
+    assert on_trash == [("s Sessions", False), ("t Trash", True)]
 
 
 async def test_a_click_on_the_other_view_name_switches_to_that_view(
@@ -1982,7 +2011,7 @@ async def test_a_click_on_the_other_view_name_switches_to_that_view(
         back = type(app.screen)
 
     assert stayed is MainScreen
-    assert moved == (TrashScreen, [("[S]essions", False), ("[T]rash", True)])
+    assert moved == (TrashScreen, [("s Sessions", False), ("t Trash", True)])
     assert back is MainScreen
 
 
@@ -2012,10 +2041,10 @@ async def test_the_view_on_screen_carries_a_background_of_its_own(
     assert first != second
 
 
-async def test_every_view_name_carries_its_own_key_in_brackets(
+async def test_every_view_names_its_own_key_in_front_of_it(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """A view names the key that opens it, in brackets: ``[S]essions``."""
+    """A view names the key that opens it, then itself: ``s Sessions``."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -2027,16 +2056,40 @@ async def test_every_view_name_carries_its_own_key_in_brackets(
             if segment.style is not None and segment.style.color is not None
         }
         wanted = app.theme_variables["footer-key-foreground"].lower()
-        on_screen = next(text for text in painted if "[S]essions" in text)
+        on_screen = next(text for text in painted if "s Sessions" in text)
         names = view_names(app)
         await pilot.press("t")
         await pilot.pause()
         in_trash = view_names(app)
 
-    assert names == [("[S]essions", True), ("[T]rash", False)]
-    assert in_trash == [("[S]essions", False), ("[T]rash", True)]
-    assert painted["T"] == wanted
+    assert names == [("s Sessions", True), ("t Trash", False)]
+    assert in_trash == [("s Sessions", False), ("t Trash", True)]
+    assert painted["t"] == wanted
     assert painted[on_screen] != wanted
+
+
+async def test_a_click_on_the_about_key_opens_the_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The key at the right of the title bar opens the About box on a click.
+
+    Every other name in the title bar answers a click, so this one does too.
+    """
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        before = type(app.screen), type(app.focused)
+        await pilot.click("#about-key")
+        await pilot.pause()
+        opened = type(app.screen)
+        await pilot.press("escape")
+        await pilot.pause()
+        after = type(app.screen), type(app.focused)
+
+    assert before == (MainScreen, SessionsPane)
+    assert opened is AboutScreen
+    assert after == (MainScreen, SessionsPane)
 
 
 async def test_a_key_with_a_word_for_a_name_is_written_in_capitals(
@@ -2081,8 +2134,8 @@ async def test_the_about_box_lists_every_key_the_tool_answers(
 
     lines = text.splitlines()
     assert [title for title, _rows in groups] == [
-        "[S]essions",
-        "[T]rash",
+        "s Sessions",
+        "t Trash",
         "Every pane",
     ]
     for title, rows in groups:
@@ -2177,12 +2230,12 @@ async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_chan
     one_left = f"Sessions (1 session, {fmt.size(a2_size)} total)"
     one = f"Trash (1 entry, {fmt.size(old.size)} total)"
     two = f"Trash (2 entries, {fmt.size(old.size + a1_size)} total)"
-    assert at_start == ("Sessions", "[T]rash (1)", "Projects (1)", both)
-    assert after_delete == ("Sessions", "[T]rash (2)", "Projects (1)", one_left)
-    assert in_trash == ("Trash", "[T]rash (2)", "Days (2)", two)
-    assert after_restore == ("Trash", "[T]rash (1)", "Days (1)", one)
-    assert after_purge == ("Trash", "[T]rash", "Days (empty)", "Trash (empty)")
-    assert back == ("Sessions", "[T]rash", "Projects (1)", both)
+    assert at_start == ("Sessions", "t Trash (1)", "Projects (1)", both)
+    assert after_delete == ("Sessions", "t Trash (2)", "Projects (1)", one_left)
+    assert in_trash == ("Trash", "t Trash (2)", "Days (2)", two)
+    assert after_restore == ("Trash", "t Trash (1)", "Days (1)", one)
+    assert after_purge == ("Trash", "t Trash", "Days (empty)", "Trash (empty)")
+    assert back == ("Sessions", "t Trash", "Projects (1)", both)
 
 
 async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
