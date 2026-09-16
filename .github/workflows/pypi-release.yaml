@@ -18,14 +18,9 @@
 #   b. Run "make publish" and give that token when twine asks. The user name
 #      is "__token__" and the password is the token, "pypi-" prefix included.
 #   c. The project now exists. Do the setup below, then DELETE the account
-#      scoped token. It is far too powerful to keep.
+#      scoped token.
 #
 # Only releases from the second one on go through this workflow.
-#
-# (A pending publisher, added at https://pypi.org/manage/account/publishing/,
-# can reserve a name that is not registered yet and would skip the manual
-# upload. It is the account wide form of step 2 below. Use it only if you want
-# the very first release to come from CI.)
 #
 # ONE TIME SETUP
 #
