@@ -1059,12 +1059,7 @@ async def test_the_pane_with_the_focus_shows_its_own_keys_on_its_frame(
 async def test_the_keys_on_a_frame_are_drawn_at_its_bottom_right(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The keys sit on the bottom edge of the frame, at its right end.
-
-    Every key takes the theme variable the footer gives its own keys, so a key
-    reads the same in both places. The words beside it keep the plain colour of
-    text.
-    """
+    """The keys sit on the bottom edge of the frame, at its right end."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -1257,11 +1252,7 @@ async def test_after_a_reload_a_gone_project_hands_its_line_to_the_next_one(
 
 
 def sized_sessions(fake: FakeClaude) -> tuple[str, str, str]:
-    """Three sessions whose order differs by last use, by title and by size.
-
-    Last used: a1, a2, b1. Title: b1 (Alpha), a1 (Mid), a2 (Zed).
-    Size: b1, a1, a2.
-    """
+    """Three sessions whose order differs by last use, by title and by size."""
     a1, a2, b1 = new_id(), new_id(), new_id()
     fake.transcript(
         "/p/a", a1, session_records(a1, "/p/a", custom_title="Mid"), mtime=3000
@@ -1856,8 +1847,6 @@ async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
     assert re.search(r"^Reason: +pressed d$", first, re.M)
     assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
-        # A long path is cut in the middle, so the line always ends with the name.
-        # A name that fills the room on its own leaves no room for the size.
         name = re.escape(parts[kind].name)
         line = rf"^{kind.capitalize()}: +(\S+  )?\S*/{name}$"
         assert re.search(line, first, re.M), kind
@@ -1907,7 +1896,6 @@ async def test_a_restore_blocked_by_an_occupied_path_reports_the_clash_and_chang
     """A restore blocked by something in its way reports the clash and changes nothing."""
     a1, a2, b1 = three_sessions(fake)
     entry = SessionStore(settings).trash(a1)
-    # Something new sits where the transcript must go back
     in_the_way = fake.transcript(
         "/p/a", a1, session_records(a1, "/p/a", custom_title="New"), mtime=3000
     )
@@ -2184,7 +2172,7 @@ async def test_the_built_in_command_box_is_off_and_its_key_opens_nothing(
 async def test_the_t_key_and_the_pane_titles_say_what_they_hold_after_every_change(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The Trash name carries its count, each pane title what it shows. All follow a change."""
+    """The Trash name carries its count, each pane title what it shows."""
     a1, a2, b1 = three_sessions(fake)
     store = SessionStore(settings)
     a1_size = store.find_session(a1).size
@@ -2244,7 +2232,6 @@ async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
         await pilot.press("slash", "a", "enter")
         await pilot.pause()
         projects_narrowed = titles(app)[2:]
-        # Tab would land on the filter box the projects pane now shows.
         app.screen.query_one(SessionsPane).focus()
         await pilot.pause()
         await pilot.press("slash", "1", "enter")
@@ -2466,10 +2453,7 @@ LONG = "/home/u/dev/projects/some-long-folder-name"
 
 
 def long_paths(fake: FakeClaude, count: int) -> list[tuple[str, str]]:
-    """``count`` projects with long paths that differ in their last part alone.
-
-    One session each, newest first. Each pair is the path and the session id.
-    """
+    """``count`` projects with long paths that differ in their last part alone."""
     projects = []
     for number in range(count):
         path, sid = f"{LONG}/app-{number:02d}", new_id()
@@ -2714,8 +2698,6 @@ async def test_the_about_box_holds_a_qr_code_of_the_address(
     code = render_qr(__url__, error=QR_ERROR, border=QR_BORDER)
     lines = code.splitlines()
     assert f"{code}\n{__url__}" in text
-    # Every line of a QR code is as wide as the code, and the three corners
-    # a reader looks for sit in it.
     assert len({len(line) for line in lines}) == 1
     assert len(lines) == 17
     corner = "█▀▀▀▀▀█"
@@ -2877,8 +2859,7 @@ async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one
 ) -> None:
     """Msgs is blank before a scan. After one and a reload it shows the turn count.
     After the transcript grows, the old count stays, a star in front. The Msgs order
-    puts the busiest first and the unscanned last, and a click on the header
-    turns it round.
+    puts the busiest first and the unscanned last.
     """
     quiet, busy, unscanned = new_id(), new_id(), new_id()
     fake.transcript("/p/x", quiet, session_records(quiet, "/p/x"), mtime=1000)
@@ -2947,12 +2928,7 @@ def gated_scan(
 async def test_c_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 'c' key reads one transcript in full and leaves the panes where they are.
-
-    The Msgs cell of that row fills in, the details pane takes the figures, and
-    a notification says what was counted. The figures need no screen of their
-    own: the details pane already holds every one of them.
-    """
+    """The 'c' key reads one transcript in full"""
     a1, _a2, _b1 = three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -3006,10 +2982,7 @@ async def test_c_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
 async def test_capital_c_scans_every_session_listed_and_fills_the_msgs_column(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The 'C' key scans the sessions on view and leaves the others alone.
-
-    Every row on view fills in, and the count of what was done shows at the end.
-    """
+    """The 'C' key scans the sessions on view"""
     a1, a2, b1 = three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -3071,9 +3044,7 @@ async def test_the_screen_answers_keys_while_a_scan_runs_in_the_background(
 async def test_a_scan_cut_short_by_a_quit_leaves_the_cache_whole(
     fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The user quits while a scan runs. Every session done by then is in the cache,
-    the cache still reads, and the session held mid-read is simply not in it.
-    """
+    """The user quits while a scan runs."""
     a1, a2, _b1 = three_sessions(fake)
     gate = threading.Event()
     seen = gated_scan(monkeypatch, gate, hold=2)
@@ -3101,11 +3072,7 @@ async def test_a_scan_cut_short_by_a_quit_leaves_the_cache_whole(
 async def test_a_row_never_moves_while_the_scan_runs_and_the_order_settles_at_the_end(
     fake: FakeClaude, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The Msgs cells fill in where the rows stand, even when Msgs orders the rows.
-
-    A row that moved under the user's hand would be a trap, so the new order
-    comes once, when the scan ends.
-    """
+    """The Msgs cells fill in where the rows is"""
     mid, top, low = new_id(), new_id(), new_id()
     for sid, prompts, mtime in ((mid, 1, 3000), (top, 2, 2000), (low, 0, 1000)):
         records = session_records(sid, "/p/x", custom_title=sid[:4])
