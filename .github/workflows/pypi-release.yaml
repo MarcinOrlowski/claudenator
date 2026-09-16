@@ -46,7 +46,23 @@
 #    repository Settings > Environments > New environment > "pypi", then add
 #    yourself under "Required reviewers".
 #
-# 4. To release: set __version__ in "claudenator/__init__.py", commit, then
+# 4. Release from ONE branch only. It is "master" here. Nothing from "dev" or
+#    from a beta branch may reach PyPI, because an upload cannot be undone and
+#    the version number cannot be used again.
+#
+#    Two things that can guards that:
+#
+#      - This workflow. The RELEASE_BRANCH value below says "master", and the
+#        job stops when the tagged commit does not sit on that branch. To move
+#        the releases to another branch, change that one value.
+#      - The "pypi" environment. In Settings > Environments > pypi set
+#        "Deployment branches and tags" to "Selected branches and tags" and add
+#        a tag rule "v*". Careful: a tag push carries no branch info, so GitHub
+#        matches the TAG name here. This rule keeps stray runs out of the
+#        environment, but it cannot tell a tag on "master" from one on "dev".
+#
+# 5. To release: set __version__ in "claudenator/__init__.py", commit, then
+#    for consistency tag the code with the same version (i.e. "v1.2.3"):
 #      git tag v1.2.3 && git push origin v1.2.3
 #
 # USING AN API TOKEN INSTEAD
@@ -58,7 +74,7 @@
 #    release is manual here too.
 # 2. Store it as a repository secret named PYPI_API_TOKEN:
 #    Settings > Secrets and variables > Actions > New repository secret.
-# 3. In the "Uploading to PyPI..." step below, add:
+# 3. In the "Uploading to PyPI…" step below, add:
 #      with:
 #        password: ${{ secrets.PYPI_API_TOKEN }}
 #    The "id-token: write" permission is then not needed.
@@ -74,6 +90,10 @@ on:
 
 permissions:
   contents: read
+
+env:
+  # Only a tag that sits on this branch may go to PyPI. See step 4 above.
+  RELEASE_BRANCH: master
 
 jobs:
   release:
@@ -94,6 +114,19 @@ jobs:
       # https://github.com/marketplace/actions/checkout
       - name: "Checkout sources"
         uses: actions/checkout@v7
+        with:
+          # The branch check below walks the history, so it needs all of it.
+          fetch-depth: 0
+
+      # A tag on "dev" or on a beta branch must never reach PyPI.
+      - name: "Checking the tag sits on the release branch…"
+        run: |
+          git fetch --no-tags --quiet origin \
+            "+refs/heads/${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}"
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${RELEASE_BRANCH}"; then
+            echo "Tag '${GITHUB_REF_NAME}' is not on '${RELEASE_BRANCH}'." >&2
+            exit 1
+          fi
 
       # https://github.com/marketplace/actions/setup-python
       - name: "Setup Python"
@@ -101,11 +134,11 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Installing dependencies..."
+      - name: "Installing dependencies…"
         run: pip install -e ".[release]"
 
       # A tag that does not match __version__ would publish the wrong release.
-      - name: "Checking the tag against the package version..."
+      - name: "Checking the tag against the package version…"
         run: |
           tag="${GITHUB_REF_NAME#v}"
           version="$(python -c 'import claudenator; print(claudenator.__version__)')"
@@ -114,12 +147,12 @@ jobs:
             exit 1
           fi
 
-      - name: "Building..."
+      - name: "Building…"
         run: make build PYTHON=python
 
-      - name: "Checking artifacts..."
+      - name: "Checking artifacts…"
         run: make check PYTHON=python
 
       # https://github.com/marketplace/actions/pypi-publish
-      - name: "Uploading to PyPI..."
+      - name: "Uploading to PyPI…"
         uses: pypa/gh-action-pypi-publish@release/v1
