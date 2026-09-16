@@ -1,3 +1,5 @@
+<!-- The image links in README.md are absolute links to make them render on PyPI too. -->
+
 ![Claudenator](https://raw.githubusercontent.com/MarcinOrlowski/claudenator/master/img/logo.webp)
 
 [![Version](https://img.shields.io/pypi/v/claudenator?style=flat)](https://pypi.org/project/claudenator/)
