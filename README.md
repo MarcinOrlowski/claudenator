@@ -1,4 +1,4 @@
-![Claudenator](img/logo.webp)
+![Claudenator](https://raw.githubusercontent.com/MarcinOrlowski/claudenator/master/img/logo.webp)
 
 [![Version](https://img.shields.io/pypi/v/claudenator?style=flat)](https://pypi.org/project/claudenator/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
@@ -15,7 +15,7 @@ This is where Claudenator comes to the rescue. It shows all your sessions, group
 folder, sorts them by whatever column you like and shows tons of additional information that
 would help you manage them and purge only real garbage.
 
-![Claudenator in action](img/claudenator.webp)
+![Claudenator in action](https://raw.githubusercontent.com/MarcinOrlowski/claudenator/master/img/claudenator.webp)
 
 ## Features
 
@@ -41,6 +41,18 @@ pipx install claudenator
 # Upgrade existing installation
 pipx upgrade claudenator
 ```
+
+To get the latest code, install straight from the repository:
+
+```bash
+# Install the current "master" branch
+pipx install --force git+https://github.com/MarcinOrlowski/claudenator.git
+
+# Install the "dev" branch or any other branch, tag or commit
+pipx install --force git+https://github.com/MarcinOrlowski/claudenator.git@dev
+```
+
+The `--force` option is only needed if there's already existing Claudenator installation present.
 
 ## License
 

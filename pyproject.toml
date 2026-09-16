@@ -17,6 +17,8 @@ build-backend = "hatchling.build"
 name = "claudenator"
 dynamic = ["version"]
 description = "The only Claude Code session manager you needca"
+# The image links in README.md are absolute on purpose. PyPI renders this text
+# on its own domain, where a relative path gives a broken image.
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
@@ -44,6 +46,7 @@ dependencies = ["textual>=8,<9", "qrcat>=1,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]
+release = ["build>=1.2", "twine>=6"]
 
 [project.urls]
 Homepage = "https://github.com/MarcinOrlowski/claudenator"
