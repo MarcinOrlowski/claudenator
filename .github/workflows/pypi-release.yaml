@@ -1,0 +1,172 @@
+##################################################################################
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+#
+##################################################################################
+#
+# THE FIRST RELEASE CANNOT BE AUTOMATED
+#
+# PyPI creates a project when it receives the first upload of that name. Before
+# that the project does not exist, so it has no settings page, no publisher
+# form and no project scoped token. There is nothing to point this workflow at.
+#
+# So the very first release is a manual one, from your own machine:
+#
+#   a. Create an ACCOUNT scoped token at
+#      https://pypi.org/manage/account/token/ ("Entire account"). A project
+#      scoped one is not offered yet.
+#   b. Run "make publish" and give that token when twine asks. The user name
+#      is "__token__" and the password is the token, "pypi-" prefix included.
+#   c. The project now exists. Do the setup below, then DELETE the account
+#      scoped token.
+#
+# Only releases from the second one on go through this workflow.
+#
+# ONE TIME SETUP
+#
+# The upload uses PyPI "Trusted Publishing". GitHub mints a short lived OIDC
+# token for this workflow and PyPI accepts it as the credential.
+#
+# How to setup:
+#
+# 1. Log in to PyPI and open the project publishing settings:
+#      https://pypi.org/manage/project/claudenator/settings/publishing/
+#
+# 2. Add a new pending publisher of type "GitHub" with these exact values:
+#      Owner:            MarcinOrlowski
+#      Repository:       claudenator
+#      Workflow name:    pypi-release.yaml
+#      Environment name: pypi
+#
+#    "Workflow name" is the file name of THIS file. If you rename the file,
+#    change it on PyPI too, or PyPI rejects the upload.
+#
+# 3. GitHub creates the "pypi" environment on the first run. To ask for a
+#    manual approval before each upload, create it by hand first:
+#    repository Settings > Environments > New environment > "pypi", then add
+#    yourself under "Required reviewers".
+#
+# 4. Release from ONE branch only. It is "master" here. Nothing from "dev" or
+#    from a beta branch may reach PyPI, because an upload cannot be undone and
+#    the version number cannot be used again.
+#
+#    Two things can guard that:
+#
+#      - This workflow. The RELEASE_BRANCH value below says "master", and the
+#        job stops when the tagged commit does not sit on that branch. To move
+#        the releases to another branch, change that one value.
+#      - The "pypi" environment. In Settings > Environments > pypi set
+#        "Deployment branches and tags" to "Selected branches and tags", then
+#        add a rule of type TAG with the pattern "v*".
+#
+#        That page says "branches and tags", but every rule carries a type and
+#        GitHub reads only the type that fits the run. A tag push has no branch
+#        at all, so a BRANCH rule never lets it in. Three traps live here:
+#          * Give the short name "v*". A pattern "refs/tags/v*" matches nothing.
+#          * A "*" does not cross a "/". For "rel/2026/v1" you need "rel/*/*".
+#          * Never pick "Protected branches only". It turns every tag away, so
+#            no release would ever run.
+#
+#        This rule keeps stray runs out of the environment, but it still cannot
+#        tell a tag on "master" from one on "dev". Only the check above can.
+#
+# 5. To release: set __version__ in "claudenator/__init__.py", commit, then
+#    for consistency tag the code with the same version (i.e. "v1.2.3"):
+#      git tag v1.2.3 && git push origin v1.2.3
+#
+#    Push that one tag by name. "git push --follow-tags" also does the job, but
+#    it carries annotated tags only, so a plain "git tag" goes nowhere and no
+#    release runs. It can also take old tags along, and GitHub starts NOTHING
+#    at all when one push carries more than three tags.
+#
+# USING AN API TOKEN INSTEAD
+#
+# If you prefer a classic token, do this instead of steps 1 and 2:
+#
+# 1. Create a token at https://pypi.org/manage/account/token/ and scope it to
+#    the "claudenator" project. The project must exist already, so the first
+#    release is manual here too.
+# 2. Store it as a repository secret named PYPI_API_TOKEN:
+#    Settings > Secrets and variables > Actions > New repository secret.
+# 3. In the "Uploading to PyPI…" step below, add:
+#      with:
+#        password: ${{ secrets.PYPI_API_TOKEN }}
+#    The "id-token: write" permission is then not needed.
+#
+##################################################################################
+
+name: "Release"
+
+# A push of a "vX.Y.Z" tag builds the package and uploads it to PyPI.
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: read
+
+env:
+  # Only a tag that sits on this branch may go to PyPI. See step 4 above.
+  RELEASE_BRANCH: master
+
+jobs:
+  release:
+    name: "Publish to PyPI"
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/claudenator
+
+    permissions:
+      contents: read
+      # PyPI Trusted Publishing signs the upload with a short lived OIDC token
+      # instead of an API token. This permission mints that token.
+      id-token: write
+
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: "Checkout sources"
+        uses: actions/checkout@v7
+        with:
+          # The branch check below walks the history, so it needs all of it.
+          fetch-depth: 0
+
+      # A tag on "dev" or on a beta branch must never reach PyPI.
+      - name: "Checking the tag sits on the release branch…"
+        run: |
+          git fetch --no-tags --quiet origin \
+            "+refs/heads/${RELEASE_BRANCH}:refs/remotes/origin/${RELEASE_BRANCH}"
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${RELEASE_BRANCH}"; then
+            echo "Tag '${GITHUB_REF_NAME}' is not on '${RELEASE_BRANCH}'." >&2
+            exit 1
+          fi
+
+      # https://github.com/marketplace/actions/setup-python
+      - name: "Setup Python"
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: "Installing dependencies…"
+        run: pip install -e ".[release]"
+
+      # A tag that does not match __version__ would publish the wrong release.
+      - name: "Checking the tag against the package version…"
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(python -c 'import claudenator; print(claudenator.__version__)')"
+          if [[ "${tag}" != "${version}" ]]; then
+            echo "Tag '${tag}' does not match package version '${version}'." >&2
+            exit 1
+          fi
+
+      - name: "Building…"
+        run: make build PYTHON=python
+
+      - name: "Checking artifacts…"
+        run: make check PYTHON=python
+
+      # https://github.com/marketplace/actions/pypi-publish
+      - name: "Uploading to PyPI…"
+        uses: pypa/gh-action-pypi-publish@release/v1

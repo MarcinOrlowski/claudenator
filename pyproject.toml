@@ -16,7 +16,8 @@ build-backend = "hatchling.build"
 [project]
 name = "claudenator"
 dynamic = ["version"]
-description = "The only Claude Code session manager you needca"
+description = "Hasta la vista, Claude sessions!"
+# The image links in README.md are absolute to make them render on PyPI too.
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
@@ -44,6 +45,7 @@ dependencies = ["textual>=8,<9", "qrcat>=1,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]
+release = ["build>=1.2", "twine>=6"]
 
 [project.urls]
 Homepage = "https://github.com/MarcinOrlowski/claudenator"
