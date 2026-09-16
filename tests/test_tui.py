@@ -605,11 +605,7 @@ async def test_a_session_row_takes_its_colour_from_its_state(
 async def test_a_row_holds_one_colour_only_so_the_worse_state_wins(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """A session in two states takes the colour of the worse one.
-
-    A damaged session that is live is the colour of a damaged one. A live fork
-    is the colour of a live session. The State column still shows both letters.
-    """
+    """A session in two states takes the color of the worse one."""
     broken, twin, mum, parked = (new_id() for _ in range(4))
     fake.transcript("/p/x", mum, session_records(mum, "/p/x"))
     fake.transcript("/p/x", twin, session_records(twin, "/p/x", copied_from=mum))
@@ -637,11 +633,7 @@ async def test_a_row_holds_one_colour_only_so_the_worse_state_wins(
 async def test_the_row_under_the_cursor_keeps_the_colours_of_the_cursor(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The cursor paints the row it sits on, so that row stays easy to read.
-
-    A damaged row is red, but not while the cursor is on it. The cursor comes
-    first, in every theme.
-    """
+    """The cursor paints the row it sits on, so that row stays easy to read."""
     broken, other = new_id(), new_id()
     fake.transcript("/p/x", broken, raw=b"\xff\xfe")
     fake.transcript("/p/x", other, session_records(other, "/p/x"))
@@ -666,11 +658,7 @@ async def test_the_row_under_the_cursor_keeps_the_colours_of_the_cursor(
 async def test_the_row_colours_follow_the_theme_in_effect(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """Another theme has another red, and the rows take it at once.
-
-    The colour comes from the stylesheet every time a row is drawn, so no row
-    is built again when the theme changes.
-    """
+    """Another theme has another red, and the rows take it at once."""
     broken, other = new_id(), new_id()
     fake.transcript("/p/x", broken, raw=b"\xff\xfe")
     fake.transcript("/p/x", other, session_records(other, "/p/x"))
@@ -695,11 +683,7 @@ async def test_the_row_colours_follow_the_theme_in_effect(
 async def test_every_theme_gives_the_states_colours_of_their_own(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """In every theme the library ships, the four kinds of row look different.
-
-    A damaged row, a live row, a fork and a plain row take four colours, and no
-    theme gives two of them the same one.
-    """
+    """In every theme the library ships, the four kinds of row look different."""
     running, child, broken, plain, parked = (new_id() for _ in range(5))
     fake.transcript("/p/x", running, session_records(running, "/p/x"))
     fake.marker(100, running, 5000, name="Run")
@@ -776,11 +760,7 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
 async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_not(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The details have the room, so every time in them holds both forms.
-
-    The 'Last used' column of the sessions pane holds one form, the short one,
-    because a column has no room for more.
-    """
+    """The details have the room, so every time in them holds both forms."""
     sid = new_id()
     fake.transcript("/p/x", sid)
     app = ClaudenatorApp(settings)
@@ -859,7 +839,7 @@ async def test_the_selection_is_a_session_id_that_survives_a_change_of_project(
 
 
 async def test_with_no_session_at_all_the_panes_are_empty_but_the_screen_works(
-    fake: FakeClaude, settings: Settings
+    _: FakeClaude, settings: Settings
 ) -> None:
     """With no session at all the panes are empty but the screen works."""
     app = ClaudenatorApp(settings)
@@ -900,11 +880,7 @@ def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
 async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The sessions are what the user came for, so their pane starts with the focus.
-
-    The projects pane still opens on 'All projects', so every session is listed,
-    and the keys of the sessions pane are the ones the footer lists.
-    """
+    """The sessions are what the user came for, so their pane starts with the focus."""
     a1, a2, b1 = three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
@@ -945,12 +921,7 @@ async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
 async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The footer lists the keys of the focused pane and follows the focus.
-
-    Only the keys that act on a row are there. A key that acts on the pane sits
-    on the pane frame, and a key that acts on the view in the title bar, so the
-    footer never lists them.
-    """
+    """The footer lists the keys of the focused pane and follows the focus."""
     three_sessions(fake)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
