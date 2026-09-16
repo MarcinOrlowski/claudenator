@@ -1,0 +1,106 @@
+##################################################################################
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+#
+##################################################################################
+#
+# Using pre-commit hooks
+#
+# To improve quality of your commit, it's recommended to use "pre-commit"
+# (http://pre-commit.com) hooks, that will block  your commits unless all tests
+# pass. This project comes with template configuration file
+# `.pre-commit-config.yaml.dist`.
+#
+# Brief installation instruction:
+#
+# * Ensure you got Python installed
+# * Install pre-commit: `pip install pre-commit`
+# * Go to project root folder
+# * Plug hooks into Git pipeline: `pre-commit install`
+#
+# See `pre-commit` official installation docs too: https://pre-commit.com/#install
+#
+# To see how pre-commit identifies given file (i.e. for 'exclude_type' config)
+# use `identify-cli <FILE>`
+#
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Prevent giant files from being committed
+      - id: check-added-large-files
+        args: [ '--maxkb=1555550' ]
+      # This hook checks yaml files for parseable syntax
+      - id: check-yaml
+      # Check for files that would conflict in case-insensitive filesystems
+      - id: check-case-conflict
+      # Ensures that (non-binary) executables have a shebang.
+      - id: check-executables-have-shebangs
+      # Check for files that contain merge conflict strings
+      - id: check-merge-conflict
+      # Prevent addition of new git submodules
+      - id: forbid-new-submodules
+      # Replaces or checks mixed line ending
+      - id: mixed-line-ending
+        args: [ '--fix=no' ]
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      # Non-executable shell script filename ends in .sh
+      - id: script-must-have-extension
+
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.6
+    hooks:
+      # Forbid files containing CRLF end-lines to be committed
+      - id: forbid-crlf
+        exclude: \.svg$
+
+  - repo: https://github.com/MarcinOrlowski/pre-commit-hooks
+    rev: 1.8.0
+    hooks:
+      - id: no-ai-slop
+      - id: commit-msg
+      # This hook trims trailing whitespace.
+      - id: trailing-whitespaces
+        exclude_types: [ 'binary', 'xml', 'png', 'jpeg', 'pdf', 'svg' ]
+        args: [ '--markdown-linebreak-ext=md', '--fix=yes' ]
+      # Ensures that a file is either empty, or ends with one newline
+      - id: end-of-file
+        exclude_types: [ 'binary', 'xml', 'png', 'jpeg', 'pdf', 'svg' ]
+        args: [ '--fix=yes' ]
+
+  # https://dev.to/m1yag1/how-to-setup-your-project-with-pre-commit-black-and-flake8-183k
+  - repo: https://github.com/ambv/black
+    rev: 26.5.1
+    hooks:
+      - id: black
+        language_version: python3.14
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        additional_dependencies: [flake8-docstrings]
+
+#  - repo: https://github.com/psf/black
+#    rev: 25.1.0
+#    hooks:
+#      - id: black
+#        args: [--line-length=88]
+#        language_version: python3.12
+
+  # https://github.com/pre-commit/pre-commit-hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0  # Use the ref you want to point at
+    hooks:
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: trailing-whitespace
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: pretty-format-json
+        args: [ '--autofix', '--no-sort-keys' ]

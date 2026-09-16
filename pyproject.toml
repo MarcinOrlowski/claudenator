@@ -1,0 +1,68 @@
+##################################################################################
+#
+# Claudenator by Marcin Orlowski
+# The only Claude Code session manager you need.
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+# Copyright  ©2026 Marcin Orlowski <MarcinOrlowski.com>
+# @link      https://github.com/MarcinOrlowski/claudenator
+#
+##################################################################################
+
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claudenator"
+dynamic = ["version"]
+description = "The only Claude Code session manager you needca"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE.md"]
+requires-python = ">=3.11"
+authors = [{ name = "Marcin Orlowski", email = "mail@marcinOrlowski.com" }]
+keywords = [
+  "claude",
+  "claude-code",
+  "claude-sessions",
+  "sessions",
+  "session-management",
+  "tui",
+  "cli",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Utilities",
+]
+dependencies = ["textual>=8,<9", "qrcat>=1,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]
+
+[project.urls]
+Homepage = "https://github.com/MarcinOrlowski/claudenator"
+Issues = "https://github.com/MarcinOrlowski/claudenator/issues"
+
+[project.scripts]
+claudenator = "claudenator.cli.main:main"
+
+[tool.hatch.version]
+path = "claudenator/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["claudenator"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["claudenator", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+target-version = ["py311", "py312", "py313", "py314"]

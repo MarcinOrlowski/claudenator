@@ -1,0 +1,59 @@
+##################################################################################
+#
+# @author    Marcin Orlowski <mail@marcinOrlowski.com>
+#
+##################################################################################
+
+name: "Code lint"
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master, dev ]
+
+# paths-filter asks the GitHub API for the files a pull request changed, and
+# that needs "pull-requests: read", which the repository's default token lacks.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  unittests:
+    name: "Linting"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+
+    steps:
+      # https://github.com/marketplace/actions/checkout
+      - name: "Checkout sources"
+        uses: actions/checkout@v7
+
+      # https://github.com/marketplace/actions/paths-changes-filter
+      - name: "Look for changed files..."
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            srcs:
+              - '**/*.py'
+
+      # https://github.com/marketplace/actions/setup-python
+      - name: "Setup Python"
+        if: steps.filter.outputs.srcs == 'true'
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+
+      - name: "Installing dependencies..."
+        if: steps.filter.outputs.srcs == 'true'
+        run: |
+          pip install -e ".[dev]"
+
+      - name: "Linting..."
+        if: steps.filter.outputs.srcs == 'true'
+        run: |
+          flake8

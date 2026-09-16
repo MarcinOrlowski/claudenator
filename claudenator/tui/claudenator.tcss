@@ -1,0 +1,287 @@
+/* Every colour is a theme variable. Never a literal one, so every theme fits. */
+
+Screen {
+    layout: vertical;
+}
+
+/* The top header line */
+#title-bar {
+    height: 1;
+    background: $panel;
+    color: $foreground;
+}
+
+.view-name {
+    width: auto;
+    padding: 0 1;
+    color: $text-muted;
+    text-wrap: nowrap;
+}
+
+/* The view on screen. */
+.view-name.-on {
+    background: $block-cursor-background;
+    color: $block-cursor-foreground;
+    text-style: bold;
+}
+
+.view-name:hover {
+    background: $block-hover-background;
+}
+
+/* The room between the view names and the tool. */
+#title-gap {
+    width: 1fr;
+}
+
+#brand {
+    width: auto;
+    padding: 0 0 0 1;
+}
+
+/* The 'about' key colored as Textual's shortcuts. A click opens the box. */
+#about-key {
+    width: auto;
+    padding: 0 1;
+    color: $footer-key-foreground;
+    text-style: bold;
+}
+
+#about-key:hover {
+    background: $block-hover-background;
+}
+
+#body {
+    height: 1fr;
+}
+
+/* A window too narrow for two columns puts the panes in single vertical one. */
+#body.-stacked {
+    layout: vertical;
+}
+
+/* The width, or the height in one column, comes from settings */
+#left {
+    height: 1fr;
+}
+
+#right {
+    width: 1fr;
+    height: 1fr;
+}
+
+ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane, FilterBox {
+    background: $surface;
+    border: round $border-blurred;
+    border-title-color: $text-muted;
+}
+
+/* The keys of the pane itself sit on the bottom-right of its own frame. See ``KEY_STYLE``. */
+ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus,
+DaysPane:focus, EntriesPane:focus, EntryPane:focus, FilterBox:focus {
+    border: round $border;
+    border-title-color: $text;
+    border-subtitle-color: $text;
+    border-subtitle-align: right;
+}
+
+ProjectsPane, DaysPane {
+    width: 1fr;
+    height: 1fr;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+SessionsPane, EntriesPane {
+    height: 1fr;
+}
+
+/* A session row is colored based onb session state (Live, Forked…) */
+SessionsPane > .sessions--damaged {
+    color: $text-error;
+}
+
+SessionsPane > .sessions--live {
+    color: $text-success;
+}
+
+/* This one is a colour of its own in all 20 themes. */
+SessionsPane > .sessions--fork {
+    color: $text-primary;
+}
+
+DetailsPane, EntryPane {
+    height: auto;
+    max-height: 50%;
+    padding: 0 1;
+}
+
+/* The pane cuts a long line itself. */
+DetailsPane Static, EntryPane Static {
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+FilterBox {
+    width: 1fr;
+    height: 3;
+    padding: 0 1;
+}
+
+/* The keys of the whole tool, at the right edge of the footer */
+#tool-keys {
+    dock: right;
+    width: auto;
+    height: 1;
+}
+
+/* Shown when window has no room for the panes. */
+#too-small {
+    width: 1fr;
+    height: 1fr;
+    content-align: center middle;
+    text-align: center;
+}
+
+/* Full screen view of session details */
+#full {
+    width: 1fr;
+    height: 1fr;
+    padding: 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+#full Static {
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* The About box sits in the middle of the window, over the panes. */
+AboutScreen {
+    align: center middle;
+}
+
+/* As wide and as tall as its lines */
+#about {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    padding: 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+/* Key help. Key  Tool/Action. */
+#about-columns {
+    width: auto;
+    height: auto;
+}
+
+#about-text {
+    width: auto;
+    text-align: center;
+    text-wrap: nowrap;
+}
+
+#about-keys {
+    width: auto;
+    margin: 0 0 0 2;
+    text-wrap: nowrap;
+}
+
+/* The question before a session goes to the Trash, or an entry off the disk. */
+ConfirmScreen {
+    align: center middle;
+}
+
+#confirm {
+    width: 60;
+    height: auto;
+    max-width: 100%;
+    padding: 1 1 0 1;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+/* The thing the question is about */
+#confirm-subject {
+    width: 1fr;
+    padding: 1 0;
+    color: $text-accent;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+}
+
+#confirm-buttons {
+    height: 3;
+    width: 1fr;
+    align: right middle;
+}
+
+#confirm-buttons Button {
+    min-width: 8;
+    margin: 0 0 0 1;
+}
+
+SettingsScreen {
+    align: center middle;
+}
+
+#settings {
+    width: 68;
+    height: 17;
+    max-width: 100%;
+    max-height: 100%;
+    background: $surface;
+    border: round $border;
+    border-title-color: $text;
+}
+
+#settings > TabbedContent {
+    height: 1fr;
+}
+
+.option-page {
+    height: 1fr;
+    padding: 0 1;
+}
+
+.option-row {
+    height: 3;
+    width: 1fr;
+}
+
+.option-row Switch {
+    width: auto;
+}
+
+.option-label {
+    width: 26;
+    height: 3;
+    content-align: left middle;
+}
+
+.option-value {
+    width: 1fr;
+}
+
+#settings-buttons {
+    dock: bottom;
+    height: 3;
+    width: 1fr;
+    padding: 0 1;
+}
+
+#settings-buttons Button {
+    min-width: 8;
+    margin: 0 0 0 1;
+}
+
+.button-gap {
+    width: 1fr;
+}
