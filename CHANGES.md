@@ -7,6 +7,7 @@
 * Updated the package metadata to match the project state.
 * Added `Makefile` with the build and release targets.
 * Added the workflow that publishes the package to PyPI.
+* Added the workflow that guards the branches a pull request joins.
 * Documented the installation from the GitHub repository.
 
 ## v1.0.0 (2026-09-16)
