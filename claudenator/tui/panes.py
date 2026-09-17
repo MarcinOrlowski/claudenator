@@ -1137,7 +1137,7 @@ class DetailsPane(FrameKeys, Lines):
 
 
 class EntryPane(FrameKeys, Lines):
-    """The lower right pane in Trash mode: one entry in full, with every part."""
+    """The lower right pane in Trash mode with trash entry basic info."""
 
     BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS, OPEN_FULL]
 
@@ -1159,10 +1159,11 @@ class EntryPane(FrameKeys, Lines):
     def show(self, entry: TrashEntry | None) -> None:
         """Show one entry, or the empty state when there is none."""
         self._entry = entry
-        self.show_lines(self.fmt.describe_entry(entry) if entry is not None else None)
+        lines = self.fmt.describe_entry_short(entry) if entry is not None else None
+        self.show_lines(lines)
 
     def action_open(self) -> None:
-        """The 'enter' key: ask for the entry on view over the whole window."""
+        """The 'ENTER' key: ask for the entry on view over the whole window."""
         if self._entry is not None:
             self.post_message(self.Opened(self._entry))
 

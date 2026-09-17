@@ -238,7 +238,6 @@ class TrashEntry:
     path: Path
     session_id: str
     trashed_at: datetime
-    reason: str | None
     title: str
     project_path: str
     parts: tuple[Part, ...]
@@ -255,7 +254,6 @@ class TrashEntry:
             "path": str(self.path),
             "session_id": self.session_id,
             "trashed_at": _iso(self.trashed_at),
-            "reason": self.reason,
             "title": self.title,
             "project_path": self.project_path,
             "size": self.size,
@@ -264,21 +262,18 @@ class TrashEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], path: Path) -> TrashEntry:
-        """An entry read back from the manifest in its folder.
+        """An entry read back from the manifest.
 
-        The folder name is the id. Raises ``ValueError`` for a record that
-        is missing a field or has a wrong one.
+        Raises ``ValueError`` for a record with missing or wrong fileld.
         """
         session_id = data.get("session_id")
         trashed_at = data.get("trashed_at")
-        reason = data.get("reason")
         title = data.get("title")
         project_path = data.get("project_path")
         parts = data.get("parts")
         if not (
             isinstance(session_id, str)
             and isinstance(trashed_at, str)
-            and (reason is None or isinstance(reason, str))
             and isinstance(title, str)
             and isinstance(project_path, str)
             and isinstance(parts, list)
@@ -292,7 +287,6 @@ class TrashEntry:
             path=path,
             session_id=session_id,
             trashed_at=moment,
-            reason=reason,
             title=title,
             project_path=project_path,
             parts=tuple(Part.from_dict(part) for part in parts),

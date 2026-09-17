@@ -3,7 +3,8 @@
 ## v1.1.0 (TBD)
 
 * A mouse click on a project or a day now keeps the focus on the pane clicked.
-* The `Details` pane now shows only vital info while full picture is shown on separate screen.
+* The `Details` pane now shows only vital and full info are on separate screen.
+* Simplified `Details` view for Trash view mode and full info on separte screen.
 * Updated the package metadata to match the project state.
 * Added `Makefile` with the build and release targets.
 * Added `make release`, which tags the release with the version the code carries.

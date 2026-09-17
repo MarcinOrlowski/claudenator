@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -533,7 +532,6 @@ def entry(size: int, parts: tuple[Part, ...] = ()) -> TrashEntry:
         path=Path("/t/2026-09-14T12-00-00_s"),
         session_id="s",
         trashed_at=NOW,
-        reason=None,
         title="Hello",
         project_path="/home/u/p",
         parts=parts,
@@ -586,12 +584,45 @@ def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -
         ("Project", "/home/u/p"),
         # The details hold both forms, whatever a column shows.
         ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
-        ("Reason", "-"),
         ("Size", "2.1K"),
         ("Entry", "/t/2026-09-14T12-00-00_s"),
         ("Transcript", "100B  /c/projects/p/s.jsonl"),
         ("Sidecar", "2.0K  /c/projects/p/s"),
         ("Session-env", "4B  /c/session-env/s"),
     ]
-    with_reason = fmt.describe_entry(replace(entry(0, parts), reason="pressed d"))
-    assert with_reason[4] == ("Reason", "pressed d")
+
+
+def test_describe_entry_short_names_the_five_lines_of_the_pane_and_no_other() -> None:
+    """The short list is its own list."""
+    fmt = Formatter(Settings(list_time_format="absolute"), now=NOW)
+    parts = (
+        Part("transcript", Path("/c/projects/p/s.jsonl"), Path("claude/x"), False, 100),
+        Part("sidecar", Path("/c/projects/p/s"), Path("claude/y"), True, 2048),
+        Part("session-env", Path("/c/session-env/s"), Path("claude/z"), True, 4),
+    )
+
+    lines = fmt.describe_entry_short(entry(0, parts))
+
+    assert lines == [
+        ("Session", "s"),
+        ("Title", "Hello"),
+        ("Project", "/home/u/p"),
+        ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
+        ("Size", "2.1K"),
+    ]
+
+
+def test_describe_entry_short_leaves_the_deeper_dive_to_the_full_list() -> None:
+    """Where the entry folder sits, and what each part takes, stay out."""
+    fmt = Formatter(Settings(), now=NOW)
+    parts = (
+        Part("transcript", Path("/c/projects/p/s.jsonl"), Path("claude/x"), False, 100),
+        Part("sidecar", Path("/c/projects/p/s"), Path("claude/y"), True, 2048),
+    )
+    many = entry(0, parts)
+
+    short = [label for label, _ in fmt.describe_entry_short(many)]
+    full = [label for label, _ in fmt.describe_entry(many)]
+
+    assert set(short) < set(full)
+    assert not set(short) & {"Entry", "Transcript", "Sidecar"}

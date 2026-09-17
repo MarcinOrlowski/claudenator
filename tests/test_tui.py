@@ -1921,18 +1921,16 @@ async def test_a_click_on_a_day_moves_the_highlight_and_keeps_the_focus(
     assert entered is EntriesPane
 
 
-async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
+async def test_the_entry_pane_shows_the_vital_lines_of_the_entry_under_the_cursor(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The entry pane shows the entry under the cursor: the session, when, the size, the parts."""
+    """The pane says which entry this is. The folder and the parts stay in the full view."""
     sid, other = new_id(), new_id()
     parts = fake.every_part("/p/x", sid)
     fake.transcript("/p/x", other)
     store = SessionStore(settings)
     later = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
-    entry = trash_session(
-        settings, store.find_session(sid), reason="pressed d", now=later
-    )
+    entry = trash_session(settings, store.find_session(sid), now=later)
     trash_session(settings, store.find_session(other), now=later - timedelta(hours=1))
     fmt = Formatter(settings)
     app = ClaudenatorApp(settings)
@@ -1943,24 +1941,70 @@ async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
         pane = app.screen.query_one(EntryPane)
         first = pane.text
         painted = str(app.screen.query_one("#entry-text", Static).render())
-        expected = painted_lines(pane, fmt.describe_entry(entry))
+        expected = painted_lines(pane, fmt.describe_entry_short(entry))
         await pilot.press("down")
         await pilot.pause()
         second = pane.text
+        await pilot.press("up")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        full = app.screen.query_one(Lines).text
 
     assert painted == first
     assert first.splitlines() == expected
     assert re.search(rf"^Session: +{sid}$", first, re.M)
+    assert re.search(r"^Title: +\S", first, re.M)
+    assert re.search(r"^Project: +/p/x$", first, re.M)
     stamp = re.escape(fmt.details_timestamp(later))
     assert re.search(rf"^Trashed: +{stamp}$", first, re.M)
-    assert re.search(r"^Reason: +pressed d$", first, re.M)
     assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
+    hidden = ("Entry", "Transcript", "Sidecar", "Session-env", "Todo")
+    assert not [label for label in hidden if f"{label}:" in first]
+    # The full view keeps every line the pane leaves out.
+    assert re.search(rf"^Entry: +\S*/{re.escape(entry.id)}$", full, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
         name = re.escape(parts[kind].name)
         line = rf"^{kind.capitalize()}: +(\S+  )?\S*/{name}$"
-        assert re.search(line, first, re.M), kind
+        assert re.search(line, full, re.M), kind
     assert re.search(rf"^Session: +{other}$", second, re.M)
     assert sid not in second
+
+
+async def test_the_entry_pane_takes_five_lines_whatever_the_entry_holds(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Five lines of quick detail view."""
+    many, one = new_id(), new_id()
+    fake.every_part("/p/x", many)
+    fake.transcript("/p/x", one)
+    store = SessionStore(settings)
+    entry = trash_session(settings, store.find_session(many))
+    trash_session(settings, store.find_session(one))
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=(settings.stack_panes_below, 16)) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        pane = app.screen.query_one(EntryPane)
+        table = app.screen.query_one(EntriesPane)
+        big = (
+            pane.region.height,
+            pane.show_vertical_scrollbar,
+            len(pane.text.splitlines()),
+        )
+        await pilot.press("down")
+        await pilot.pause()
+        small = (
+            pane.region.height,
+            pane.show_vertical_scrollbar,
+            len(pane.text.splitlines()),
+        )
+        room = table.region.height
+
+    assert len(entry.parts) > 1
+    assert big == small == (7, False, 5)
+    assert room > 0
 
 
 async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_reload(

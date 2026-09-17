@@ -59,12 +59,11 @@ def test_every_part_moves_into_one_entry(
         kind: path.read_bytes() for kind, path in parts.items() if path.is_file()
     }
 
-    entry = store.trash(sid, reason="pressed d")
+    entry = store.trash(sid)
 
     assert ENTRY_NAME.match(entry.id)
     assert entry.path == settings.trash_dir / entry.id
     assert entry.session_id == sid
-    assert entry.reason == "pressed d"
     assert entry.title == "Fix the failing test"
     assert entry.project_path == PROJECT
     assert entry.trashed_at.tzinfo is not None
@@ -90,12 +89,11 @@ def test_the_manifest_records_where_every_part_belongs(
     was_dir = {kind: path.is_dir() for kind, path in parts.items()}
     transcript_size = parts["transcript"].stat().st_size
 
-    entry = store.trash(sid, reason="test")
+    entry = store.trash(sid)
     manifest = json.loads((entry.path / MANIFEST_NAME).read_text(encoding="utf-8"))
 
     assert manifest["version"] == 1
     assert manifest["session_id"] == sid
-    assert manifest["reason"] == "test"
     assert manifest["title"] == "Fix the failing test"
     assert manifest["project_path"] == PROJECT
     assert manifest["trashed_at"] == entry.trashed_at.isoformat(timespec="seconds")
@@ -345,10 +343,9 @@ def test_trash_of_moves_a_session_already_in_hand_and_reads_nothing_again(
         store, "list_sessions", lambda: pytest.fail("the session list was read again")
     )
 
-    entry = store.trash_of(session, reason="old")
+    entry = store.trash_of(session)
 
     assert entry.session_id == sid
-    assert entry.reason == "old"
     assert not path.exists()
     assert SessionStore(settings).list_sessions() == []
 
