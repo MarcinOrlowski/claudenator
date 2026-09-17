@@ -396,6 +396,71 @@ def test_describe_figures_with_nothing_counted_shows_dashes_not_blanks() -> None
     assert lines["Tool calls"] == "0"
 
 
+def test_describe_short_names_the_six_lines_of_the_pane_and_no_other() -> None:
+    """The short list is its own list. A line added to ``describe`` stays out of it.
+
+    Name every line here, so the pane holds what it is meant to hold and the
+    room it needs does not grow on its own. A deep scan adds none: the figures
+    are in the full view alone.
+    """
+    fmt = Formatter(Settings(), now=NOW)
+
+    lines = fmt.describe_short(SessionDetails(session(), 0))
+    scanned = fmt.describe_short(SessionDetails(session(), 0, figures()))
+
+    assert lines == [
+        ("Id", "s"),
+        ("Title", "Hello"),
+        ("Project", "/home/u/p"),
+        ("Git branch", "dev"),
+        ("Last used", f"{fmt.absolute(NOW)} (just now)"),
+        ("Total", "2.1K"),
+    ]
+    assert scanned == lines
+
+
+def test_describe_short_leaves_the_deeper_dive_to_the_full_list() -> None:
+    """Where the files sit, what each part takes and the state marks stay out."""
+    fmt = Formatter(Settings(), now=NOW)
+    forked = SessionDetails(
+        session(fork_parent="mum", live=True, pid=42), 10, figures()
+    )
+
+    short = [label for label, _ in fmt.describe_short(forked)]
+    full = [label for label, _ in fmt.describe(forked)]
+
+    assert set(short) < set(full)
+    assert not set(short) & {
+        "Folder",
+        "Transcript",
+        "Sidecar",
+        "Created",
+        "Claude Code",
+        "Fork of",
+        "Inherited",
+        "Live",
+        "Damaged",
+        "Turns",
+        "Tokens",
+        "Scanned",
+    }
+
+
+def test_describe_short_of_a_damaged_session_still_reads_as_a_session() -> None:
+    """A transcript that gave almost nothing still fills every line, with a dash."""
+    fmt = Formatter(Settings(), now=NOW)
+    poor = session(
+        title="s", title_source="id", git_branch=None, created=None, damaged=True
+    )
+
+    lines = dict(fmt.describe_short(SessionDetails(poor, 0)))
+
+    assert lines["Id"] == "s"
+    assert lines["Title"] == "s"
+    assert lines["Git branch"] == "-"
+    assert lines["Total"] == "2.1K"
+
+
 def test_figures_line_says_the_headline_numbers_in_one_line() -> None:
     """The line a notification carries: the three numbers, each with its noun."""
     fmt = Formatter(Settings(), now=NOW)

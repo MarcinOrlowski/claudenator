@@ -83,7 +83,7 @@ KEY_STYLE = "$footer-key-foreground bold"
 PROJECTS_BINDINGS = [Binding("enter", "select", "Sessions", show=False)]
 DAYS_BINDINGS = [Binding("enter", "select", "Entries", show=False)]
 SESSIONS_BINDINGS = [
-    Binding("enter", "open", "Details"),
+    Binding("enter", "open", "More info"),
     Binding("d", "trash", "Delete"),
     Binding("c", "scan", "Scan"),
     Binding("C", "scan_all", "Scan all"),
@@ -94,10 +94,14 @@ SORT_BINDINGS = [
     Binding("O", "sort_reverse", "Reverse", show=False),
 ]
 ENTRIES_BINDINGS = [
-    Binding("enter", "open", "Entry"),
+    Binding("enter", "open", "More info"),
     Binding("u", "restore", "Restore"),
     Binding("x", "purge", "Purge"),
 ]
+
+# The 'enter' key of a pane that shows one thing: the same full view the table
+# opens, so the key reads the same wherever the focus sits.
+OPEN_FULL = Binding("enter", "open", "More info")
 
 
 def plain_keys(keys: list[tuple[str, str]]) -> str:
@@ -145,7 +149,8 @@ class FrameKeys:
 
     def on_focus(self) -> None:
         """The pane can answer its keys now, so the frame names them."""
-        self.border_subtitle = key_line(self.frame_keys())
+        keys = self.frame_keys()
+        self.border_subtitle = key_line(keys) if keys else None
 
     def on_blur(self) -> None:
         """The pane answers no key now, so the frame names none."""
@@ -1083,29 +1088,69 @@ class Lines(VerticalScroll):
 
 
 class DetailsPane(FrameKeys, Lines):
-    """The lower right pane: one session in full, the same lines ``info`` prints."""
+    """The lower right pane: the few lines that say which session is under the cursor.
 
-    BINDINGS = [*SHARED_BINDINGS, TO_TRASH]
+    The full list, the one ``info`` prints, is behind 'enter'.
+    """
+
+    BINDINGS = [*SHARED_BINDINGS, TO_TRASH, OPEN_FULL]
+
+    class Opened(Message):
+        """The 'enter' key: the session on view is wanted in full."""
+
+        def __init__(self, details: SessionDetails) -> None:
+            super().__init__()
+            self.details = details
 
     def __init__(self, fmt: Formatter) -> None:
         super().__init__("details", "Details", fmt, "No session.")
+        self._details: SessionDetails | None = None
+
+    def frame_keys(self) -> list[tuple[str, str]]:
+        """None. The pane holds no list, so no key of its own acts on it."""
+        return []
 
     def show(self, details: SessionDetails | None) -> None:
         """Show one session, or the empty state when there is none."""
-        self.show_lines(self.fmt.describe(details) if details is not None else None)
+        self._details = details
+        lines = self.fmt.describe_short(details) if details is not None else None
+        self.show_lines(lines)
+
+    def action_open(self) -> None:
+        """The 'enter' key: ask for the session on view in full."""
+        if self._details is not None:
+            self.post_message(self.Opened(self._details))
 
 
 class EntryPane(FrameKeys, Lines):
     """The lower right pane in Trash mode: one entry in full, with every part."""
 
-    BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS]
+    BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS, OPEN_FULL]
+
+    class Opened(Message):
+        """The 'enter' key: the entry on view is wanted over the whole window."""
+
+        def __init__(self, entry: TrashEntry) -> None:
+            super().__init__()
+            self.entry = entry
 
     def __init__(self, fmt: Formatter) -> None:
         super().__init__("entry", "Entry", fmt, "No entry.")
+        self._entry: TrashEntry | None = None
+
+    def frame_keys(self) -> list[tuple[str, str]]:
+        """None. The pane holds no list, so no key of its own acts on it."""
+        return []
 
     def show(self, entry: TrashEntry | None) -> None:
         """Show one entry, or the empty state when there is none."""
+        self._entry = entry
         self.show_lines(self.fmt.describe_entry(entry) if entry is not None else None)
+
+    def action_open(self) -> None:
+        """The 'enter' key: ask for the entry on view over the whole window."""
+        if self._entry is not None:
+            self.post_message(self.Opened(self._entry))
 
 
 class TooSmall(Static):
