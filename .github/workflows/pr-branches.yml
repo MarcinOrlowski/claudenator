@@ -1,0 +1,176 @@
+# Guards the two ends of a pull request: the branch it comes from, and the
+# branch it goes to.
+#
+# "master" holds the released code alone, "dev" collects the work, and every
+# change starts on a working branch cut off "dev". A pull request straight from
+# "dev" into "master" skipped that, and one went in by mistake already.
+#
+# Rule 1: the head branch is neither "dev" nor "master", whatever the base.
+#         A branch of a fork is not judged, as its names are not ours to set.
+# Rule 2: a pull request into "master" is a release, so its title reads
+#         "[#XX] Release x.y.z", that version is the one in the package, and no
+#         tag carries it yet. Anything else belongs in "dev".
+#
+# One job per rule, so a failed check says which rule broke.
+#
+# It runs on "pull_request" and not on "pull_request_target": it reads one line
+# of one file and runs no code from the pull request.
+#
+# Marcin Orlowski
+
+name: "PR: Branches are allowed"
+
+on:
+  pull_request:
+    # "edited" so a corrected title runs the check again.
+    types: [ opened, synchronize, reopened, edited ]
+
+permissions:
+  contents: read
+
+jobs:
+  check_head_branch:
+    name: "Check the source branch"
+    runs-on: ubuntu-latest
+    # A fork names its branches as it likes, and this rule is for ours.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+    - name: "Verify the pull request comes from a working branch"
+      env:
+        HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      run: |
+        set -euo pipefail
+
+        fail() {
+          echo "*********************************************************"
+          echo "* FIXME! ${1}"
+          shift
+          for msg in "${@}"; do
+            echo "* ${msg}"
+          done
+          echo "*********************************************************"
+          exit 1
+        }
+
+        if [[ "${HEAD_REF}" != "dev" && "${HEAD_REF}" != "master" ]]; then
+          echo "Head branch '${HEAD_REF}' is a working branch. Good."
+          exit 0
+        fi
+
+        fail "This pull request comes from '${HEAD_REF}'." \
+          "" \
+          "'dev' and 'master' never feed a pull request. Every change" \
+          "starts on its own branch, cut off 'dev':" \
+          "" \
+          "  git fetch origin" \
+          "  git checkout -b <ticket>-<what-it-does> origin/dev" \
+          "" \
+          "A release is no different. Cut a branch off 'dev', set the" \
+          "version on it, and open the pull request from there."
+
+  check_release:
+    name: "Check the release pull request"
+    runs-on: ubuntu-latest
+    # Only "master" takes a release. Every other base sees rule 1 alone.
+    if: github.event.pull_request.base.ref == 'master'
+
+    steps:
+    # https://github.com/marketplace/actions/checkout
+    - name: "Checkout the head of the pull request"
+      uses: actions/checkout@v7
+      with:
+        # The version to release is the one on the pull request, not the one
+        # "master" carries today.
+        ref: ${{ github.event.pull_request.head.sha }}
+
+    - name: "Verify the pull request releases a new version"
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+
+        declare -r VERSION_FILE="claudenator/__init__.py"
+
+        fail() {
+          echo "*********************************************************"
+          echo "* FIXME! ${1}"
+          shift
+          for msg in "${@}"; do
+            echo "* ${msg}"
+          done
+          echo "*********************************************************"
+          exit 1
+        }
+
+        # Bails out on anything that is not a release at all.
+        fail_title() {
+          fail "${@}" \
+            "" \
+            "'master' holds the released code alone, so a release is the" \
+            "only pull request it takes, and its title says so:" \
+            "" \
+            "  [#1234] Release 1.2.3" \
+            "" \
+            "1234 is the release ticket, and 1.2.3 is three numbers, with" \
+            "no 'v' in front." \
+            "" \
+            "Any other change goes to 'dev'. Change the base branch of this" \
+            "pull request to 'dev'."
+        }
+
+        if [[ ! "${PR_TITLE}" =~ ^\[#[0-9]+\]\ Release\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          fail_title "The title of this pull request is not a release title." \
+            "" \
+            "  ${PR_TITLE}"
+        fi
+        declare -r title_version="${BASH_REMATCH[1]}"
+
+        # The line reads: __version__ = "1.0.0"
+        if ! package_version="$(
+          grep -oE '^__version__[[:space:]]*=[[:space:]]*"[^"]+"' "${VERSION_FILE}" \
+            | grep -oE '"[^"]+"' \
+            | tr -d '"'
+        )"; then
+          fail "No __version__ found in ${VERSION_FILE}." \
+            "" \
+            "The check reads the version to release from that file, and the" \
+            "line it looks for is:" \
+            "" \
+            '  __version__ = "1.2.3"'
+        fi
+
+        if [[ "${title_version}" != "${package_version}" ]]; then
+          fail "The title and the package name two different versions." \
+            "" \
+            "  title:   ${title_version}" \
+            "  package: ${package_version}  (${VERSION_FILE})" \
+            "" \
+            "Set __version__ to the version you release, or correct the" \
+            "title, so that the two agree."
+        fi
+
+        # A tag that is there already says this version went out. "--exit-code"
+        # tells "no such tag" (2) from a call that did not work at all.
+        for tag in "${title_version}" "v${title_version}"; do
+          found=0
+          git ls-remote --exit-code --quiet --tags origin "refs/tags/${tag}" >/dev/null \
+            || found="${?}"
+
+          if [[ "${found}" -ne 0 && "${found}" -ne 2 ]]; then
+            fail "Could not read the tags of ${REPO} (git ls-remote said ${found})."
+          fi
+
+          if [[ "${found}" -eq 0 ]]; then
+            fail "Tag '${tag}' is there already, so ${title_version} went out." \
+              "" \
+              "  https://github.com/${REPO}/releases/tag/${tag}" \
+              "" \
+              "A version goes out once, and PyPI takes no upload of a version" \
+              "it holds. Raise the version in ${VERSION_FILE} and in the" \
+              "title of this pull request."
+          fi
+        done
+
+        echo "Release ${title_version} is new, and the title and the package agree."
