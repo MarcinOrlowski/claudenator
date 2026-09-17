@@ -70,9 +70,19 @@
 #        This rule keeps stray runs out of the environment, but it still cannot
 #        tell a tag on "master" from one on "dev". Only the check above can.
 #
-# 5. To release: set __version__ in "claudenator/__init__.py", commit, then
-#    for consistency tag the code with the same version (i.e. "v1.2.3"):
-#      git tag v1.2.3 && git push origin v1.2.3
+# 5. To release: set __version__ in "claudenator/__init__.py", commit it to
+#    "master", push, then run:
+#
+#      make release
+#
+#    The tag form is "vX.Y.Z", the "v" included, because the trigger below
+#    takes "v*" alone. A tag without the "v" starts nothing at all: no build,
+#    no upload, and no error to read. "make release" reads __version__ and
+#    builds the tag from it, so the form and the version cannot drift. It also
+#    stops when the branch, the working tree, or the tag is not ready.
+#
+#    By hand the same thing is:
+#      git tag -a v1.2.3 -m "Release v1.2.3" && git push origin v1.2.3
 #
 #    Push that one tag by name. "git push --follow-tags" also does the job, but
 #    it carries annotated tags only, so a plain "git tag" goes nowhere and no
