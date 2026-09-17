@@ -395,6 +395,58 @@ async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
     assert closed == (MainScreen, SessionsPane)
 
 
+async def test_enter_in_the_details_pane_opens_the_same_full_view_as_the_table(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The pane holds the vital lines, so 'enter' on it opens the full list too."""
+    a1, _a2, _b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        focused = type(app.focused)
+        key = shown_keys(app).get("enter")
+        await pilot.press("enter")
+        await pilot.pause()
+        box = app.screen.query_one(Lines)
+        opened = type(app.screen), str(box.border_title)
+        text = box.text
+
+    assert focused is DetailsPane
+    assert key == "More info"
+    assert opened == (FullScreen, "Details")
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
+    assert re.search(r"^Folder: +\S+/claude/projects/-p-a$", text, re.M)
+
+
+async def test_enter_in_the_entry_pane_opens_the_same_full_view_as_the_table(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash pane answers 'enter' the same way, and names it the same way."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        focused = type(app.focused)
+        key = shown_keys(app).get("enter")
+        await pilot.press("enter")
+        await pilot.pause()
+        box = app.screen.query_one(Lines)
+        opened = type(app.screen), str(box.border_title)
+        text = box.text
+
+    assert focused is EntryPane
+    assert key == "More info"
+    assert opened == (FullScreen, "Entry")
+    assert re.search(rf"^Session: +{b1}$", text, re.M)
+
+
 async def test_in_the_trash_the_panes_follow_the_same_widths_and_enter_opens_an_entry(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -891,7 +943,7 @@ async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
     assert listed == ([a1, a2, b1], a1)
     assert project == (None, ALL_PROJECTS)
     assert keys["d"] == "Delete"
-    assert keys["enter"] == "Details"
+    assert keys["enter"] == "More info"
     assert re.search(rf"^Id: +{a1}$", text, re.M)
 
 
@@ -979,8 +1031,7 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     assert focus == [SessionsPane, DetailsPane, ProjectsPane, SessionsPane]
     assert keys[0] == keys[3]
     assert keys[0] != keys[1]
-    assert keys[0]["enter"] == "Details"
-    assert "enter" not in keys[1]
+    assert keys[0]["enter"] == keys[1]["enter"] == "More info"
     assert "enter" not in keys[2]
     for listed in keys:
         assert {"f2", "q"} <= set(listed)
@@ -1002,14 +1053,20 @@ async def test_the_footer_orders_the_keys_of_a_pane_by_the_row_then_the_list(
         entries = footer_keys(app)
 
     assert sessions == [
-        "ENTER Details",
+        "ENTER More info",
         "d Delete",
         "c Scan",
         "C Scan all",
         "F2 Settings",
         "q Quit",
     ]
-    assert entries == ["ENTER Entry", "u Restore", "x Purge", "F2 Settings", "q Quit"]
+    assert entries == [
+        "ENTER More info",
+        "u Restore",
+        "x Purge",
+        "F2 Settings",
+        "q Quit",
+    ]
 
 
 async def test_the_footer_holds_the_keys_of_the_tool_at_its_right_edge(
@@ -1056,7 +1113,7 @@ async def test_the_pane_with_the_focus_shows_its_own_keys_on_its_frame(
 
     assert on_table == "r Reload  o Sort  O Reverse  / Filter"
     assert quiet == ["", ""]
-    assert on_details == "r Reload"
+    assert on_details == ""
     assert on_projects == "r Reload  / Filter"
     assert table_now == ""
 
@@ -2115,7 +2172,7 @@ async def test_a_key_with_a_word_for_a_name_is_written_in_capitals(
         await pilot.pause()
         on_filter = app.screen._compositor.render_strips()[-1].text
 
-    assert "ENTER Details" in on_panes
+    assert "ENTER More info" in on_panes
     assert "d Delete" in on_panes
     assert in_full.strip() == "ESC Close"
     assert on_filter.strip() == "ENTER Done  ESC Clear"

@@ -308,7 +308,14 @@ class MainScreen(PaneScreen[None]):
 
         This is the way to the details in a window too narrow to hold the pane.
         """
-        details = self._details_of(event.session)
+        self._open_details(self._details_of(event.session))
+
+    def on_details_pane_opened(self, event: DetailsPane.Opened) -> None:
+        """The 'enter' key in the details pane: the same full view, from the pane."""
+        self._open_details(event.details)
+
+    def _open_details(self, details: SessionDetails | None) -> None:
+        """One session in full, over the whole window."""
         if details is not None:
             self.app.push_screen(
                 FullScreen("Details", self.fmt, self.fmt.describe(details))
@@ -500,8 +507,16 @@ class TrashScreen(PaneScreen[TrashVisit]):
 
     def on_entries_pane_opened(self, event: EntriesPane.Opened) -> None:
         """The 'enter' key on an entry: it takes the whole window, pane or no pane."""
+        self._open_entry(event.entry)
+
+    def on_entry_pane_opened(self, event: EntryPane.Opened) -> None:
+        """The 'enter' key in the entry pane: the same full view, from the pane."""
+        self._open_entry(event.entry)
+
+    def _open_entry(self, entry: TrashEntry) -> None:
+        """One Trash entry in full, over the whole window."""
         self.app.push_screen(
-            FullScreen("Entry", self.fmt, self.fmt.describe_entry(event.entry))
+            FullScreen("Entry", self.fmt, self.fmt.describe_entry(entry))
         )
 
     def on_entries_pane_restore_wanted(self, event: EntriesPane.RestoreWanted) -> None:
