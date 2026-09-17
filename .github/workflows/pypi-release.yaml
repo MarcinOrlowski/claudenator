@@ -95,7 +95,7 @@
 #
 ##################################################################################
 
-name: "Release"
+name: "Release: Publish to PyPI"
 
 # A push of a "vX.Y.Z" tag builds the package and uploads it to PyPI.
 on:
@@ -110,8 +110,8 @@ env:
   RELEASE_BRANCH: master
 
 jobs:
-  release:
-    name: "Publish to PyPI"
+  publish:
+    name: "Build and upload"
     runs-on: ubuntu-latest
 
     environment:

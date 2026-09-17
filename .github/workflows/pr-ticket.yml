@@ -9,7 +9,7 @@
 #
 # Marcin Orlowski
 
-name: "Ticket"
+name: "PR: Ticket is open"
 
 on:
   pull_request:
@@ -23,8 +23,8 @@ permissions:
   issues: read
 
 jobs:
-  ticket:
-    name: "Check ticket reference"
+  check_ticket:
+    name: "Check the ticket reference"
     runs-on: ubuntu-latest
 
     steps:

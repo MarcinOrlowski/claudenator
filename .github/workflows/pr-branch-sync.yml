@@ -1,6 +1,6 @@
 ##################################################################################
 #
-# Pull Request Branch Sync Validation
+# PR: Branch is up to date
 #
 # This workflow ensures PR branches are in sync with their target branch before
 # allowing merge. It prevents merging PRs that are behind the target branch,
@@ -29,7 +29,7 @@
 #
 ##################################################################################
 
-name: "PR Branch Sync Check"
+name: "PR: Branch is up to date"
 
 on:
   pull_request:
@@ -44,7 +44,7 @@ permissions:
 
 jobs:
   check_branch_sync:
-    name: "Check Branch Sync"
+    name: "Check the branch is up to date"
     runs-on: ubuntu-latest
 
     steps:
@@ -127,7 +127,8 @@ jobs:
                 await github.rest.checks.create({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  name: 'PR Branch Sync Check',
+                  // Same as the job name, so both triggers show one check.
+                  name: 'Check the branch is up to date',
                   head_sha: headSha,
                   status: 'completed',
                   conclusion: conclusion,
