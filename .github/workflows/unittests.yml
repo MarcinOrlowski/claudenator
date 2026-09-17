@@ -4,7 +4,7 @@
 #
 ##################################################################################
 
-name: "Unit tests"
+name: "Test: Unit tests"
 
 on:
   push:
@@ -19,8 +19,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  unittests:
-    name: "Testing"
+  unit_tests:
+    name: "pytest"
     runs-on: ${{ matrix.os }}
 
     strategy:

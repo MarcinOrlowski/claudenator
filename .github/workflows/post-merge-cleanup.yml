@@ -11,7 +11,7 @@
 #
 # Marcin Orlowski
 
-name: "Post-Merge Cleanup"
+name: "PR: Lock the ticket after merge"
 
 on:
   pull_request_target:
@@ -23,8 +23,8 @@ permissions:
   pull-requests: write
 
 jobs:
-  lock:
-    name: "Lock merged PR and its ticket(s)"
+  lock_ticket:
+    name: "Lock the merged PR and its ticket(s)"
     runs-on: ubuntu-latest
     # "closed" fires for merged pull requests and for dropped ones alike, and
     # there's nothing to clean up after the latter.
@@ -64,7 +64,7 @@ jobs:
         declare -r ATTEMPTS=3
         declare -r DELAY=5
 
-        # Formats kept in sync with ticket.yml, so that anything accepted there
+        # Formats kept in sync with pr-ticket.yml, so that anything accepted there
         # also gets locked here.
         declare -r KEYWORDS='close[sd]?|fix(e[sd])?|resolve[sd]?'
         declare -r URL="https://github\.com/${REPO//./\\.}/issues/"
