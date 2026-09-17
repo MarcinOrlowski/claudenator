@@ -1186,6 +1186,28 @@ async def test_enter_on_a_project_moves_into_its_sessions(
     assert selected == a1
 
 
+async def test_a_click_on_a_project_moves_the_highlight_and_keeps_the_focus(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A click on a project narrows the sessions. The focus stays on the pane."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        pane = app.query_one(ProjectsPane)
+        # y 0 is the frame, so y 2 is the second line: the first project.
+        await pilot.click(ProjectsPane, offset=(2, 2))
+        await pilot.pause()
+        on_a = type(app.focused), pane.selected_path, rows(table)
+        await pilot.click(ProjectsPane, offset=(2, 1))
+        await pilot.pause()
+        on_all = type(app.focused), pane.selected_path, rows(table)
+
+    assert on_a == (ProjectsPane, "/p/a", [a1, a2])
+    assert on_all == (ProjectsPane, None, [a1, a2, b1])
+
+
 async def test_q_quits_from_every_pane(fake: FakeClaude, settings: Settings) -> None:
     """The 'q' key quits from every pane."""
     three_sessions(fake)
@@ -1871,6 +1893,31 @@ async def test_the_trash_lists_its_entries_newest_first_grouped_by_day(
     ]
     assert later == (DaysPane, day_later, [e_a1.id, e_a2.id])
     assert earlier == (day_earlier, [e_b1.id])
+    assert entered is EntriesPane
+
+
+async def test_a_click_on_a_day_moves_the_highlight_and_keeps_the_focus(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A click on a day narrows the entries. The focus stays on the pane."""
+    e_a1, e_a2, _e_b1 = two_days_of_trash(fake, settings)
+    fmt = Formatter(settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        pane = app.screen.query_one(DaysPane)
+        # y 0 is the frame, so y 2 is the second line: the newest day.
+        await pilot.click(DaysPane, offset=(2, 2))
+        await pilot.pause()
+        clicked = type(app.focused), pane.selected_day, rows(table)
+        await pilot.press("enter")
+        await pilot.pause()
+        entered = type(app.focused)
+
+    assert clicked == (DaysPane, fmt.day(e_a1.trashed_at), [e_a1.id, e_a2.id])
     assert entered is EntriesPane
 
 

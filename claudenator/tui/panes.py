@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from rich.style import Style
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, HorizontalGroup, VerticalScroll
@@ -378,6 +379,19 @@ class Lister(OptionList):
         """The 'enter' key on a line."""
         event.stop()
         self.post_message(self.Opened())
+
+    async def _on_click(self, event: events.Click) -> None:
+        """Handle entry clicv
+
+        The library makes a click do what ENTER does, which hands the focus to
+        the pane on the right. But the user clicked this pane with mouse, so the
+        expected behavior is different behavior that hitting ENTER and the focus
+        shall not be moved.
+        """
+        event.prevent_default()
+        index = event.style.meta.get("option")
+        if index is not None and not self.get_option_at_index(index).disabled:
+            self.highlighted = index
 
     def repaint(self) -> None:
         """Write every line again, for a setting that changes how a line reads."""
