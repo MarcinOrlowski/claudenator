@@ -702,10 +702,10 @@ async def test_every_theme_gives_the_states_colours_of_their_own(
     }
 
 
-async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
+async def test_the_details_pane_shows_the_vital_lines_of_the_session_under_the_cursor(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """The details pane shows the session under the cursor in full."""
+    """The pane says which session this is. The rest of the lines stay in the full view."""
     sid = new_id()
     fake.transcript(
         "/p/x",
@@ -725,25 +725,19 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
         text = pane.text
         static = app.query_one("#details-text", Static)
         painted = str(static.render())
-        expected = painted_lines(pane, fmt.describe(store.details(sid)))
+        expected = painted_lines(pane, fmt.describe_short(store.details(sid)))
 
     assert painted == text
     assert text.splitlines() == expected
-    assert f"Id:          {sid}" in text
-    assert "Project:     /p/x  (from transcript)" in text
-    assert re.search(r"^Folder: +\S+/claude/projects/-p-x$", text, re.M)
-    assert "Git branch:  dev" in text
-    assert f"Created:     {fmt.details_timestamp(session.created)}" in text
-    assert f"Last used:   {fmt.details_timestamp(session.last_used)}" in text
-    assert "Claude Code: 2.1.270" in text
-    assert f"Transcript:  {fmt.size(session.transcript_size)}  {sid}.jsonl" in text
-    assert (
-        f"Sidecar:     {fmt.size(session.sidecar_size)}  {sid}  (3 subagent transcripts)"
-        in text
-    )
-    assert f"Total:       {fmt.size(session.size)}" in text
-    assert "Live:        yes  (pid 4242)" in text
-    assert "Fork of:" not in text
+    assert re.search(rf"^Id: +{sid}$", text, re.M)
+    assert re.search(r"^Title: +Hello$", text, re.M)
+    assert re.search(r"^Project: +/p/x$", text, re.M)
+    assert re.search(r"^Git branch: +dev$", text, re.M)
+    used = re.escape(fmt.details_timestamp(session.last_used))
+    assert re.search(rf"^Last used: +{used}$", text, re.M)
+    assert re.search(rf"^Total: +{fmt.size(session.size)}$", text, re.M)
+    hidden = ("Folder", "Transcript", "Sidecar", "Created", "Claude Code", "Live")
+    assert not [label for label in hidden if f"{label}:" in text]
 
 
 async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_not(
@@ -757,9 +751,12 @@ async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_no
         await pilot.pause()
         text = app.query_one(DetailsPane).text
         cell = str(app.query_one(SessionsPane).get_cell(sid, "last_used"))
+        await pilot.press("enter")
+        await pilot.pause()
+        full = app.screen.query_one(Lines).text
 
     both = r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \((just now|[\dymdhs ]+ ago)\)"
-    assert re.search(rf"^Created: +{both}$", text, re.M)
+    assert re.search(rf"^Created: +{both}$", full, re.M)
     assert re.search(rf"^Last used: +{both}$", text, re.M)
     assert re.fullmatch(r"just now|[\dymdhs ]+ ago", cell)
     assert settings.list_time_format == "relative"
@@ -768,7 +765,11 @@ async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_no
 async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The details of a fork name the parent and the inherited bytes."""
+    """The details of a fork name the parent and the inherited bytes.
+
+    The small pane does not: the state column already marks a fork, and the
+    parent is a deeper dive.
+    """
     parent, child = new_id(), new_id()
     fake.transcript("/p/x", parent, mtime=1000)
     fake.transcript(
@@ -779,9 +780,13 @@ async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        text = app.query_one(DetailsPane).text
+        pane = app.query_one(DetailsPane).text
+        await pilot.press("enter")
+        await pilot.pause()
+        text = app.screen.query_one(Lines).text
 
     assert details.inherited_bytes > 0
+    assert "Fork of:" not in pane
     assert f"Fork of:     {parent}" in text
     assert (
         f"Inherited:   {fmt.size(details.inherited_bytes)} came from the parent" in text
@@ -803,7 +808,7 @@ async def test_moving_the_cursor_changes_the_details(
         text = app.query_one(DetailsPane).text
 
     assert selected == a2
-    assert f"Id:          {a2}" in text
+    assert re.search(rf"^Id: +{a2}$", text, re.M)
     assert a1 not in text
 
 
@@ -887,7 +892,7 @@ async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
     assert project == (None, ALL_PROJECTS)
     assert keys["d"] == "Delete"
     assert keys["enter"] == "Details"
-    assert f"Id:          {a1}" in text
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
 
 
 async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
@@ -1200,7 +1205,7 @@ async def test_r_reloads_and_the_cursor_finds_its_session_by_id(
     assert before == (a2, 1, [a1, a2])
     assert after == (a2, 2, [new, a1, a2])
     assert project == "/p/a"
-    assert f"Id:          {a2}" in text
+    assert re.search(rf"^Id: +{a2}$", text, re.M)
 
 
 async def test_after_a_reload_a_gone_session_hands_its_row_to_the_next_one(
@@ -1514,7 +1519,7 @@ async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
 
     assert (keys["d"], enabled) == ("Delete", True)
     assert after == ([a2, b1], a2, 0)
-    assert f"Id:          {a2}" in text
+    assert re.search(rf"^Id: +{a2}$", text, re.M)
     assert focused is SessionsPane
     assert shown == []
     assert trashed(settings) == [a1]
@@ -1631,7 +1636,7 @@ async def test_the_last_session_of_a_project_takes_the_project_with_it(
     assert prompts == [ALL_PROJECTS, "/p/a"]
     assert after == ("/p/a", [a1, a2], a1, 0)
     assert focused is SessionsPane
-    assert f"Id:          {a1}" in text
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
     assert trashed(settings) == [b1]
 
 
@@ -1887,7 +1892,7 @@ async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_rel
     assert not entry.path.exists()
     assert trashed(settings) == []
     assert after == ([ALL_PROJECTS, "/p/a", "/p/b"], ([a1, a2, b1], a1, 0))
-    assert f"Id:          {a1}" in text
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
 
 
 async def test_a_restore_blocked_by_an_occupied_path_reports_the_clash_and_changes_nothing(
@@ -2817,10 +2822,10 @@ async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wr
 ) -> None:
     """A long line in the details pane is cut at the slashes, im the middle"""
     sid = new_id()
-    fake.transcript(LONG, sid, session_records(sid, LONG, custom_title="Hello"))
-    fake.sidecar(LONG, sid, agents=3)
+    deep = LONG + "/with/many/more/parts/that/go/on/and/on/and/on"
+    fake.transcript(deep, sid, session_records(sid, deep, custom_title="Hello"))
+    fake.sidecar(deep, sid, agents=3)
     details = SessionStore(settings).details(sid)
-    folder = str(details.session.transcript_path.parent)
     fmt = Formatter(settings)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=(110, 24)) as pilot:
@@ -2828,22 +2833,21 @@ async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wr
         pane = app.query_one(DetailsPane)
         static = app.query_one("#details-text", Static)
         narrow = pane.text.splitlines()
-        expected = painted_lines(pane, fmt.describe(details))
+        expected = painted_lines(pane, fmt.describe_short(details))
         room = pane.scrollable_content_region.width
         height = static.region.height
-        scrollbar = pane.show_vertical_scrollbar
         await pilot.resize_terminal(220, 60)
         await pilot.pause()
         wide = pane.text.splitlines()
 
-    shown = next(line for line in narrow if line.startswith("Folder:"))
-    assert scrollbar and len(folder) > room
+    shown = next(line for line in narrow if line.startswith("Project:"))
+    assert len(deep) > room
     assert narrow == expected
     assert all(len(line) <= room for line in narrow)
     assert height == len(narrow) == len(wide)
     assert settings.cut_mark in shown
-    assert shown.endswith("/" + folder.rsplit("/", 1)[1])
-    assert f"Folder:      {folder}" in wide
+    assert shown.endswith("/" + deep.rsplit("/", 1)[1])
+    assert f"Project:    {deep}" in wide
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:
@@ -2965,8 +2969,11 @@ async def test_c_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
         await pilot.pause()
         where = type(app.screen), type(app.focused)
         cell = str(table.get_cell(a1, "msgs"))
-        details = app.query_one(DetailsPane).text
         shown = toasts(app)
+        # The small pane never shows a figure. The full view does.
+        await pilot.press("enter")
+        await pilot.pause()
+        details = app.screen.query_one(Lines).text
 
     assert key == "Scan"
     assert blank == ""
@@ -2994,8 +3001,10 @@ async def test_c_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
         await app.workers.wait_for_complete()
         await pilot.pause()
         cell = str(app.query_one(SessionsPane).get_cell(a1, "msgs"))
-        details = app.query_one(DetailsPane).text
         shown = toasts(app)
+        await pilot.press("enter")
+        await pilot.pause()
+        details = app.screen.query_one(Lines).text
 
     assert seen == []
     assert cell == "1"

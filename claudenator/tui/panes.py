@@ -1083,7 +1083,10 @@ class Lines(VerticalScroll):
 
 
 class DetailsPane(FrameKeys, Lines):
-    """The lower right pane: one session in full, the same lines ``info`` prints."""
+    """The lower right pane: the few lines that say which session is under the cursor.
+
+    The full list, the one ``info`` prints, is behind 'enter'.
+    """
 
     BINDINGS = [*SHARED_BINDINGS, TO_TRASH]
 
@@ -1092,7 +1095,8 @@ class DetailsPane(FrameKeys, Lines):
 
     def show(self, details: SessionDetails | None) -> None:
         """Show one session, or the empty state when there is none."""
-        self.show_lines(self.fmt.describe(details) if details is not None else None)
+        lines = self.fmt.describe_short(details) if details is not None else None
+        self.show_lines(lines)
 
 
 class EntryPane(FrameKeys, Lines):
