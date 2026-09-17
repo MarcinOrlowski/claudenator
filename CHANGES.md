@@ -2,6 +2,7 @@
 
 ## v1.1.0 (TBD)
 
+* The `About`box can now be dismissed with mouse too.
 * A mouse click on a project or a day now keeps the focus on the pane clicked.
 * The `Details` pane now shows only vital and full info are on separate screen.
 * Simplified `Details` view for Trash view mode and full info on separte screen.

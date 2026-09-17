@@ -171,10 +171,12 @@ FilterBox {
 /* The About box sits in the middle of the window, over the panes. */
 AboutScreen {
     align: center middle;
+    layers: base mark;
 }
 
 /* As wide and as tall as its lines */
 #about {
+    layer: base;
     width: auto;
     height: auto;
     max-width: 100%;
@@ -183,6 +185,19 @@ AboutScreen {
     background: $surface;
     border: round $border;
     border-title-color: $text;
+}
+
+/* The 'close' mark */
+#about-close {
+    layer: mark;
+    position: absolute;
+    width: auto;
+    color: $footer-key-foreground;
+    text-style: bold;
+}
+
+#about-close:hover {
+    background: $block-hover-background;
 }
 
 /* Key help. Key  Tool/Action. */

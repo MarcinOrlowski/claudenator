@@ -2933,6 +2933,59 @@ async def test_every_key_of_the_about_box_closes_it_and_q_does_not_quit(
     assert running is True
 
 
+async def test_a_click_on_the_close_mark_shuts_the_about_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Click ob '[x]' mark dismisses About box"""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        before = type(app.focused)
+        await pilot.click("#about-key")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, AboutScreen)
+        mark = screen.query_one("#about-close", Static)
+        shown = str(mark.content)
+        top = screen.query_one("#about", VerticalScroll).region
+        seat = mark.region
+        paint = mark.rich_style
+        key_colour = app.theme_variables["footer-key-foreground"].lower()
+        await pilot.click("#about-close")
+        await pilot.pause()
+        after = type(app.screen), type(app.focused)
+
+    assert shown == AboutScreen.CLOSE_HINT
+    assert paint.color is not None and paint.color.name == key_colour
+    assert paint.bold is True
+    assert seat.y == top.y, "the mark is not on the top line of the frame"
+    assert seat.right == top.right - 2, "the mark is not at the right of the frame"
+    assert before == SessionsPane
+    assert after == (MainScreen, SessionsPane)
+
+
+async def test_the_close_mark_follows_the_about_box_when_the_window_grows(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A new window size moves the box, and the mark stays on its top right corner."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    seats: list[tuple[int, int]] = []
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        for size in ((80, 24), (100, 30), (70, 20)):
+            await pilot.resize_terminal(*size)
+            await pilot.pause()
+            box = app.screen.query_one("#about", VerticalScroll).region
+            mark = app.screen.query_one("#about-close", Static).region
+            seats.append((mark.right - box.right, mark.y - box.y))
+
+    assert seats == [(-2, 0)] * 3
+
+
 async def test_the_about_key_works_on_every_pane_and_in_the_trash(
     fake: FakeClaude, settings: Settings
 ) -> None:
