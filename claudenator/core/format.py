@@ -377,7 +377,6 @@ class Formatter:
             ("Title", entry.title),
             ("Project", entry.project_path),
             ("Trashed", self.details_timestamp(entry.trashed_at)),
-            ("Reason", entry.reason or "-"),
             ("Size", self.size(entry.size)),
             ("Entry", str(entry.path)),
         ]
@@ -385,3 +384,13 @@ class Formatter:
             label = part.kind.capitalize()
             lines.append((label, f"{self.size(part.size)}  {part.original}"))
         return lines
+
+    def describe_entry_short(self, entry: TrashEntry) -> list[tuple[str, str]]:
+        """Basic details about trashed entry"""
+        return [
+            ("Session", entry.session_id),
+            ("Title", entry.title),
+            ("Project", entry.project_path),
+            ("Trashed", self.details_timestamp(entry.trashed_at)),
+            ("Size", self.size(entry.size)),
+        ]

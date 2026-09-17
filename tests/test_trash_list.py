@@ -62,7 +62,7 @@ def test_an_entry_reads_back_exactly_as_it_was_written(
     sid = new_id()
     fake.every_part(PROJECT, sid)
     fake.marker(4242, sid, 36917)
-    made = store.trash(sid, reason="pressed d")
+    made = store.trash(sid)
 
     [read] = store.list_trash()
 
@@ -70,7 +70,6 @@ def test_an_entry_reads_back_exactly_as_it_was_written(
     assert read.parts == made.parts
     assert read.trashed_at == made.trashed_at
     assert read.trashed_at.tzinfo is not None
-    assert read.reason == "pressed d"
     assert read.size == made.size > 0
 
 

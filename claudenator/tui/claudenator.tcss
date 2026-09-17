@@ -116,10 +116,14 @@ DetailsPane, EntryPane {
     padding: 0 1;
 }
 
-/* Six lines and the frame. A fixed height, so the table keeps the rest of the
-   room whatever the session under the cursor holds. See ``describe_short``. */
+/* The lines and the frame. A fixed height, so the table keeps the rest of the
+   room whatever sits under the cursor. */
 DetailsPane {
     height: 8;
+}
+
+EntryPane {
+    height: 7;
 }
 
 /* The pane cuts a long line itself. */
