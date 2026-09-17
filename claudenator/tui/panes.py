@@ -381,11 +381,12 @@ class Lister(OptionList):
         self.post_message(self.Opened())
 
     async def _on_click(self, event: events.Click) -> None:
-        """A click moves the highlight, and no more.
+        """Handle entry clicv
 
-        The library makes a click do what 'enter' does, which hands the focus to
-        the pane on the right. The user clicked this pane, so the focus stays here.
-        ``prevent_default`` keeps the handler of the library out of it.
+        The library makes a click do what ENTER does, which hands the focus to
+        the pane on the right. But the user clicked this pane with mouse, so the
+        expected behavior is different behavior that hitting ENTER and the focus
+        shall not be moved.
         """
         event.prevent_default()
         index = event.style.meta.get("option")
