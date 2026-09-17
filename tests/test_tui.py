@@ -321,6 +321,94 @@ async def test_q_still_quits_while_the_window_is_too_small(
     assert running is False
 
 
+async def test_ctrl_c_ends_the_tool_as_q_does(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'CTRL+c' quits same as 'q' would"""
+    three_sessions(fake)
+    by_q = ClaudenatorApp(settings)
+    async with by_q.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("q")
+        await pilot.pause()
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        running = app.is_running
+        said = toasts(app)
+
+    assert running is False
+    assert said == []
+    assert app.return_code == by_q.return_code
+
+
+async def test_ctrl_c_ends_the_tool_from_the_filter_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'ctrl+c' quits from the '/' box. The copy that ``Input`` gives it goes."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("slash", "a")
+        await pilot.pause()
+        typing = type(app.focused)
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        running = app.is_running
+
+    assert typing is FilterBox
+    assert running is False
+
+
+async def test_ctrl_c_ends_the_tool_from_a_settings_field(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'ctrl+c' quits while a Settings field has the focus."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "time_pattern").query_one(Input).focus()
+        await pilot.pause()
+        typing = isinstance(app.focused, Input)
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        running = app.is_running
+
+    assert typing is True
+    assert running is False
+
+
+async def test_ctrl_c_ends_the_tool_while_a_popup_is_open(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'ctrl+c' quits from a popup. It does not merely close it."""
+    three_sessions(fake)
+    settings.confirm_delete = True
+    narrow = (settings.stack_panes_below - 1, 20)
+    popups: list[type] = []
+    alive: list[bool] = []
+    keys = ((WIDE, "question_mark"), (WIDE, "f2"), (WIDE, "d"), (narrow, "enter"))
+    for size, key in keys:
+        app = ClaudenatorApp(settings)
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            await pilot.press(key)
+            await pilot.pause()
+            popups.append(type(app.screen))
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            alive.append(app.is_running)
+
+    assert popups == [AboutScreen, SettingsScreen, ConfirmScreen, FullScreen]
+    assert alive == [False] * 4
+
+
 async def test_the_focus_never_goes_missing_when_the_window_changes_size(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -905,9 +993,12 @@ async def test_with_no_session_at_all_the_panes_are_empty_but_the_screen_works(
     assert running is False
 
 
-def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
-    """No key is bound on the app or the screen: every key belongs to a pane."""
-    assert "BINDINGS" not in ClaudenatorApp.__dict__
+def test_only_ctrl_c_is_bound_on_the_app_and_no_key_on_the_screen() -> None:
+    """Every key belongs to a pane. Only 'ctrl+c' is on the app, and it must be:
+    it quits from a popup too, which no pane key reaches.
+    """
+    on_app = {binding.key for binding in ClaudenatorApp.__dict__["BINDINGS"]}
+    assert on_app == {"ctrl+c"}
     assert "BINDINGS" not in MainScreen.__dict__
     assert "BINDINGS" not in TrashScreen.__dict__
     views = {
