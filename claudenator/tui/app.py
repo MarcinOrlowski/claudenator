@@ -130,7 +130,7 @@ class PaneScreen(Screen[ScreenResultType]):
             box.open()
 
     def on_resize(self) -> None:
-        """The window has another size: fit the panes to it."""
+        """The window size changed"""
         self._fit_window()
 
     def _too_small(self) -> TooSmall:
@@ -158,7 +158,6 @@ class PaneScreen(Screen[ScreenResultType]):
 
     def _fit_window(self) -> None:
         """Gives the layout the shape the window can fit.
-
         A narrow window puts the panes in one column, one over the other,
         """
         settings = self.store.settings
@@ -174,7 +173,6 @@ class PaneScreen(Screen[ScreenResultType]):
 
     def _keep_focus(self) -> None:
         """Hold the focus on a pane through every change of size.
-
         A window with no room for the panes takes them out of view, and the
         library drops the focus with them.
         """
@@ -188,7 +186,7 @@ class PaneScreen(Screen[ScreenResultType]):
         self.query_one(Table).focus()
 
     def refresh_settings(self) -> None:
-        """A setting changed: give the panes the new shape, and draw them again."""
+        """A setting changed"""
         self._fit_window()
         for lister in self.query(Lister):
             lister.repaint()
@@ -198,11 +196,11 @@ class PaneScreen(Screen[ScreenResultType]):
             lines.repaint()
 
     def _show_trash(self, entries: list[TrashEntry]) -> None:
-        """The Trash name in the title bar says how much the Trash holds now."""
+        """The Trash name in the title bar says how much the Trash takes."""
         self.query_one(TitleBar).label_trash(self.fmt.trash_key(entries))
 
     def on_view_wanted(self, event: ViewWanted) -> None:
-        """A click on the other name in the title bar: switch, as its key does."""
+        """A click on the other name in the title bar"""
         event.stop()
         self.switch_view()
 
@@ -269,7 +267,7 @@ class MainScreen(PaneScreen[None]):
         self.load()
 
     def refresh_settings(self) -> None:
-        """The rows take the order the settings name, the details their time form."""
+        """Update settings"""
         settings = self.store.settings
         sessions = self.query_one(SessionsPane)
         sessions.sort_by(settings.sort_column, settings.sort_descending)
@@ -304,10 +302,7 @@ class MainScreen(PaneScreen[None]):
         self.query_one(DetailsPane).show(self._details_of(session))
 
     def on_sessions_pane_opened(self, event: SessionsPane.Opened) -> None:
-        """The 'enter' key on a session: its details take the whole window.
-
-        This is the way to the details in a window too narrow to hold the pane.
-        """
+        """The 'ENTER' key on a session: its details take the whole window."""
         self._open_details(self._details_of(event.session))
 
     def on_details_pane_opened(self, event: DetailsPane.Opened) -> None:
@@ -435,7 +430,7 @@ class MainScreen(PaneScreen[None]):
 
 
 class TrashScreen(PaneScreen[TrashVisit]):
-    """Trash mode: the days, the entries of one of them, and one entry in full."""
+    """Trash view mode."""
 
     def __init__(self, store: SessionStore, fmt: Formatter) -> None:
         super().__init__(store, fmt)
@@ -457,7 +452,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         yield KeyBar()
 
     def on_mount(self) -> None:
-        """Shape the layout, fill, and focus the entries: that is where the keys are."""
+        """Shape the layout, fill, and focus the entries"""
         self._fit_window()
         self.load()
         self.query_one(EntriesPane).focus()
@@ -497,7 +492,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self.query_one(EntriesPane).show(shown)
 
     def on_days_pane_opened(self) -> None:
-        """The 'enter' key on a day moves the user into its entries."""
+        """The 'enter' key on a trashed-day."""
         self.query_one(EntriesPane).focus()
 
     def on_entries_pane_chosen(self, event: EntriesPane.Chosen) -> None:
@@ -506,11 +501,11 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self.query_one(EntryPane).show(entry)
 
     def on_entries_pane_opened(self, event: EntriesPane.Opened) -> None:
-        """The 'enter' key on an entry: it takes the whole window, pane or no pane."""
+        """The 'enter' key on an entry"""
         self._open_entry(event.entry)
 
     def on_entry_pane_opened(self, event: EntryPane.Opened) -> None:
-        """The 'enter' key in the entry pane: the same full view, from the pane."""
+        """The 'enter' key in the entry pane"""
         self._open_entry(event.entry)
 
     def _open_entry(self, entry: TrashEntry) -> None:
@@ -533,7 +528,7 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self._forget(entry)
 
     def on_entries_pane_purge_wanted(self, event: EntriesPane.PurgeWanted) -> None:
-        """The ``x`` key: the entry is gone for good, after a question when asked."""
+        """The ``x`` key: the entry is gone for good"""
         entry = event.entry
         if not self.store.settings.confirm_purge:
             self._purge_entry(entry)
@@ -571,14 +566,17 @@ class ClaudenatorApp(App[None]):
     TITLE = __title__
     CSS_PATH = "claudenator.tcss"
 
-    # Disable Textual's own command palette
+    # 'CTRL+c' quits the app
+    BINDINGS = [Binding("ctrl+c", "quit", "Quit", show=False, priority=True)]
+
+    # Disable Textual's own command palette as it is useless here.
     ENABLE_COMMAND_PALETTE = False
 
     # We want some keys to be spelled differently than Textual thinks.
     KEY_NAMES = {"enter": "ENTER", "escape": "ESC", "tab": "TAB", "f2": "F2"}
 
     def get_key_display(self, binding: Binding) -> str:
-        """The key as the user reads it, the same wherever the tool names one."""
+        """The key as the user reads it."""
         if binding.key_display:
             return binding.key_display
         return self.KEY_NAMES.get(binding.key) or super().get_key_display(binding)
