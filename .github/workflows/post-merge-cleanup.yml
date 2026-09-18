@@ -6,20 +6,28 @@
 # into the default branch. This project merges into "dev", so GitHub closes
 # nothing and the workflow has to close the ticket on its own.
 #
-# Runs on "pull_request_target" and not on "pull_request", because this project
-# takes its contributions as pull requests from forks, and those only get a
-# read-only token on "pull_request", while locking needs write access. That is
-# safe here, as this workflow never checks out nor runs the pull request's code.
-# It only reads the pull request description, and does so through an environment
-# variable, never by pasting it into the script.
+# Runs on "push" and not on "pull_request_target", because GitHub blocks
+# "pull_request_target" in public repositories from 2 November 2026. A "push"
+# event gets the write token that the close and the lock need, and it gets it
+# after a merge from a fork too, so it replaces the only reason this workflow
+# used "pull_request_target". There is no pull request in a "push" payload, so
+# the first step looks it up from the pushed commit.
+#
+# A "push" event also runs the copy of this file that sits on the branch pushed
+# to, while "pull_request_target" always ran the copy from the default branch.
+# A change here takes effect on "dev" at once.
+#
+# The workflow never checks out nor runs the pull request's code. It only reads
+# the pull request description, and does so through an environment variable,
+# never by pasting it into the script.
 #
 # Marcin Orlowski
 
 name: "PR: Close and lock the ticket after merge"
 
 on:
-  pull_request_target:
-    types: [ closed ]
+  push:
+    branches: [ master, dev ]
 
 permissions:
   contents: read
@@ -30,13 +38,49 @@ jobs:
   close_and_lock_ticket:
     name: "Lock the merged PR, close and lock its ticket(s)"
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true
 
     steps:
-    - name: "Lock the pull request conversation"
+    - name: "Find the pull request the push merged"
+      id: pr
       env:
         GH_TOKEN: ${{ github.token }}
-        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        # The endpoint also answers with open pull requests that merely hold the
+        # commit, so filter on "merge_commit_sha". That is the pull request this
+        # push merged, for a merge commit and a squash commit alike.
+        pr="$(gh api "repos/${REPO}/commits/${SHA}/pulls" \
+                | jq --arg sha "${SHA}" 'map(select(.merge_commit_sha == $sha)) | first')"
+
+        if [[ "${pr}" == "null" ]]; then
+          # A commit pushed straight to the branch, with no pull request behind
+          # it. Nothing to clean up.
+          echo "No pull request merged by ${SHA}."
+          exit 0
+        fi
+
+        number="$(jq -r '.number' <<< "${pr}")"
+        echo "number=${number}" >> "${GITHUB_OUTPUT}"
+
+        # A description runs over many lines, so it needs a delimiter, and one
+        # no description can carry.
+        declare -r EOM="PR_BODY_$(openssl rand -hex 16)"
+        {
+          echo "body<<${EOM}"
+          jq -r '.body // ""' <<< "${pr}"
+          echo "${EOM}"
+        } >> "${GITHUB_OUTPUT}"
+
+        echo "PR #${number} merged by ${SHA}."
+
+    - name: "Lock the pull request conversation"
+      if: steps.pr.outputs.number != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ steps.pr.outputs.number }}
         REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
@@ -53,12 +97,11 @@ jobs:
     - name: "Close and lock the ticket(s) the pull request names"
       # Runs even if locking the pull request itself went wrong, as the two are
       # unrelated.
-      if: always()
+      if: always() && steps.pr.outputs.number != ''
       env:
         GH_TOKEN: ${{ github.token }}
-        PR: ${{ github.event.pull_request.number }}
-        PR_BODY: ${{ github.event.pull_request.body }}
-        BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PR_BODY: ${{ steps.pr.outputs.body }}
+        BASE_REF: ${{ github.ref_name }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         REPO: ${{ github.repository }}
       run: |
