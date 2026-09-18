@@ -92,6 +92,46 @@ from tests.fabricate import (
 
 WIDE = (140, 40)
 
+# Every pane that carries a frame, in both views.
+PANES = (
+    ProjectsPane,
+    SessionsPane,
+    DetailsPane,
+    DaysPane,
+    EntriesPane,
+    EntryPane,
+    FilterBox,
+)
+
+FRAME_GAP = 0.15
+FOCUS_GAP = 0.05
+
+
+def colour_gap(one: Color, two: Color) -> float:
+    """How far two colours stand apart: 0.0 for a pair that matches, 1.0 for black on white."""
+    return max(abs(first - second) for first, second in zip(one.rgb, two.rgb)) / 255
+
+
+def frame_gaps(app: ClaudenatorApp, theme: str) -> list[tuple[str, str, float]]:
+    """How far the frame of every pane on view stands from the bg color."""
+    found: list[tuple[str, str, float]] = []
+    for kind in PANES:
+        for pane in app.screen.query(kind):
+            _style, colour = pane.styles.border_top
+            back = pane.background_colors[1]
+            if colour.ansi is None and back.ansi is None:
+                found.append((theme, kind.__name__, colour_gap(back + colour, back)))
+    return found
+
+
+def note_focus(app: ClaudenatorApp, moved: dict[str, float]) -> None:
+    """Record how far the pane that has the focus moved from its own background."""
+    pane = app.focused
+    if isinstance(pane, PANES):
+        moved[type(pane).__name__] = colour_gap(
+            pane.background_colors[1], pane.styles.background
+        )
+
 
 def columns(table: DataTable) -> list[str]:
     """The column labels, left to right."""
@@ -1343,6 +1383,85 @@ async def test_every_theme_the_library_ships_applies(
 
     assert applied == sorted(BUILTIN_THEMES)
     assert len(applied) >= 20
+
+
+async def test_the_pane_frame_holds_against_its_background_in_every_theme(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Ensure pane frame is visible and does not use similar colour"""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    gaps: list[tuple[str, str, float]] = []
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for name in sorted(BUILTIN_THEMES):
+            app.theme = name
+            await pilot.press("slash")
+            await pilot.pause()
+            gaps += frame_gaps(app, name)
+            await pilot.press("escape", "t")
+            await pilot.pause()
+            gaps += frame_gaps(app, name)
+            await pilot.press("s")
+            await pilot.pause()
+
+    assert [row for row in gaps if row[2] < FRAME_GAP] == []
+    assert {name for _theme, name, _gap in gaps} == {kind.__name__ for kind in PANES}
+
+
+async def test_the_focus_shows_in_the_background_and_the_bold_title_in_every_theme(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The pane with the focus takes a tint and a bold border title, in every theme."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    gaps: list[tuple[str, float]] = []
+    titles: set[tuple[str, str]] = set()
+    held: set[tuple[bool, bool]] = set()
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for name in sorted(BUILTIN_THEMES):
+            app.theme = name
+            await pilot.pause()
+            on = app.query_one(SessionsPane)
+            off = app.query_one(ProjectsPane)
+            held.add((on.has_focus, off.has_focus))
+            titles.add(
+                (str(on.styles.border_title_style), str(off.styles.border_title_style))
+            )
+            lit, dim = on.background_colors[1], off.background_colors[1]
+            if lit.ansi is None and dim.ansi is None:
+                gaps.append((name, colour_gap(lit, dim)))
+
+    assert held == {(True, False)}
+    assert titles == {("bold", "none")}
+    assert [row for row in gaps if row[1] < FOCUS_GAP] == []
+
+
+async def test_every_pane_lifts_its_background_when_it_takes_the_focus(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The background of a pane moves the moment the focus lands on it."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    moved: dict[str, float] = {}
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("slash")
+        await pilot.pause()
+        note_focus(app, moved)
+        await pilot.press("escape")
+        for view in ("t", "s"):
+            for _turn in range(4):
+                await pilot.pause()
+                note_focus(app, moved)
+                await pilot.press("tab")
+            await pilot.press(view)
+
+    assert set(moved) == {kind.__name__ for kind in PANES}
+    assert [name for name, gap in moved.items() if gap < FOCUS_GAP] == []
 
 
 def state(table: SessionsPane) -> tuple[list[str], str | None, tuple[str, bool]]:
@@ -3165,13 +3284,22 @@ def test_the_stylesheet_names_no_literal_colour() -> None:
     assert {
         "$surface",
         "$border",
-        "$border-blurred",
+        "$foreground-muted",
+        "$primary",
         "$text",
         "$text-muted",
         "$text-error",
         "$text-success",
         "$text-primary",
     } <= variables
+
+
+def test_the_stylesheet_paints_no_frame_with_border_blurred() -> None:
+    """``$border-blurred`` is the surface colour a hair darker: it makes no frame."""
+    path = Path(claudenator.tui.app.__file__).with_name(ClaudenatorApp.CSS_PATH)
+    rules = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+
+    assert "$border-blurred" not in rules
 
 
 async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one(
