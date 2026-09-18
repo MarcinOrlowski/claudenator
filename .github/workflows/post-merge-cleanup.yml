@@ -1,6 +1,5 @@
 # Closes the ticket(s) a merged pull request names, then locks them and the pull
-# request conversation, so that follow-up talk starts a fresh ticket instead of
-# landing in a thread nobody watches any more.
+# request conversation.
 #
 # GitHub closes a referenced ticket by itself only when the pull request goes
 # into the default branch. This project merges into "dev", so GitHub closes
@@ -65,8 +64,7 @@ jobs:
         number="$(jq -r '.number' <<< "${pr}")"
         echo "number=${number}" >> "${GITHUB_OUTPUT}"
 
-        # A description runs over many lines, so it needs a delimiter, and one
-        # no description can carry.
+        # A description runs over many lines, so it needs a delimiter
         declare -r EOM="PR_BODY_$(openssl rand -hex 16)"
         {
           echo "body<<${EOM}"
@@ -95,8 +93,6 @@ jobs:
         echo "PR #${PR} conversation locked."
 
     - name: "Close and lock the ticket(s) the pull request names"
-      # Runs even if locking the pull request itself went wrong, as the two are
-      # unrelated.
       if: always() && steps.pr.outputs.number != ''
       env:
         GH_TOKEN: ${{ github.token }}
