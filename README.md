@@ -5,6 +5,8 @@
 [![Version](https://img.shields.io/pypi/v/claudenator?style=flat)](https://pypi.org/project/claudenator/)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
+[![Unit tests](https://github.com/MarcinOrlowski/claudenator/actions/workflows/unittests.yml/badge.svg)](https://github.com/MarcinOrlowski/claudenator/actions/workflows/unittests.yml)
+[![Code lint](https://github.com/MarcinOrlowski/claudenator/actions/workflows/linter.yml/badge.svg)](https://github.com/MarcinOrlowski/claudenator/actions/workflows/linter.yml)
 
 ## The only Claude Code session manager you need
 
