@@ -72,15 +72,17 @@ Screen {
 
 ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane, FilterBox {
     background: $surface;
-    border: round $border-blurred;
+    border: round $foreground-muted;
     border-title-color: $text-muted;
 }
 
-/* The keys of the pane itself sit on the bottom-right of its own frame. See ``KEY_STYLE``. */
+/* The focus shows in the tint and the bold title. The keys of the pane sit on the
+   bottom-right of its own frame. See ``KEY_STYLE``. */
 ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus,
 DaysPane:focus, EntriesPane:focus, EntryPane:focus, FilterBox:focus {
-    border: round $border;
+    background-tint: $primary 20%;
     border-title-color: $text;
+    border-title-style: bold;
     border-subtitle-color: $text;
     border-subtitle-align: right;
 }
