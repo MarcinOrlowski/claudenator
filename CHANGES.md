@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v1.1.0 (TBD)
+## v1.1.0 (2026-09-20)
 
 * The pane frame is visible in every color theme. Focused is shown in bold.
 * The `CTRL-C` key now also terminates the app when pressed.
