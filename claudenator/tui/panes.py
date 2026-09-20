@@ -409,6 +409,18 @@ class Lister(OptionList):
                     index, Content(self._label(option.id))
                 )
 
+    def preselect(self, key: str | None) -> None:
+        """Ask for the highlight on this line"""
+        self._selected = key
+        if not self.option_count:
+            return
+        try:
+            index = 0 if key is None else self.get_option_index(key)
+        except OptionDoesNotExist:
+            self._selected = None
+            index = 0
+        self.highlighted = index
+
     def _refill(self, first: str, ids: list[str]) -> None:
         """Put the lines back: the 'all' line, then one per id. The title counts them."""
         self.border_title = self.fmt.counted(self._title, len(ids))
@@ -548,6 +560,12 @@ class Table(Filterable, DataTable):
     def selected_id(self) -> str | None:
         """The key of the row under the cursor, or None when there is none."""
         return self._selected
+
+    def preselect(self, key: str | None) -> None:
+        """Ask for the cursor on this row, at once or at the next fill."""
+        self._selected = key
+        if self.row_count:
+            self._place_cursor(self._place())
 
     def drop(self, key: str) -> None:
         """Take one row out of the table in place."""

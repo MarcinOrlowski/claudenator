@@ -52,6 +52,7 @@ from claudenator.core.config import (
 from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, TrashEntry
 from claudenator.core.settings import Settings
+from claudenator.core.state import State, write_state
 from claudenator.core.store import SessionStore
 from claudenator.core.trash import trash_session
 from claudenator.tui.about import QR_BORDER, QR_ERROR, AboutScreen
@@ -91,6 +92,9 @@ from tests.fabricate import (
 )
 
 WIDE = (140, 40)
+
+# Currently selected project and session
+Pick = tuple[str | None, str | None, list[str]]
 
 # Every pane that carries a frame, in both views.
 PANES = (
@@ -1095,6 +1099,114 @@ async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
     assert Settings().start_pane == "sessions"
 
 
+def picked(app: ClaudenatorApp) -> Pick:
+    """What the panes hold: the project, the session, and the rows on view."""
+    table = app.screen.query_one(SessionsPane)
+    return (
+        app.screen.query_one(ProjectsPane).selected_path,
+        table.selected_id,
+        rows(table),
+    )
+
+
+async def one_run(
+    settings: Settings,
+    projects: tuple[str, ...] = (),
+    sessions: tuple[str, ...] = (),
+) -> tuple[Pick, Pick]:
+    """One run, start to quit: what the panes held at start, and after these keys."""
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        opened = picked(app)
+        for pane, keys in ((ProjectsPane, projects), (SessionsPane, sessions)):
+            if keys:
+                app.screen.query_one(pane).focus()
+                await pilot.press(*keys)
+                await pilot.pause()
+        return opened, picked(app)
+
+
+async def test_the_next_start_puts_the_highlight_back_on_the_project_and_the_session(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A quit on a project and a session: the next start holds both again."""
+    a1, a2, _b1 = three_sessions(fake)
+    _, left = await one_run(settings, projects=("down",), sessions=("down",))
+    opened, _ = await one_run(settings)
+
+    assert left == ("/p/a", a2, [a1, a2])
+    assert opened == ("/p/a", a2, [a1, a2])
+    assert settings.state_file.is_file()
+
+
+async def test_a_quit_on_all_projects_starts_on_all_projects(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'All projects' line is a choice too, and a later run writes the file again."""
+    a1, a2, b1 = three_sessions(fake)
+    await one_run(settings, projects=("down",))
+    _, left = await one_run(settings, projects=("up",))
+    opened, _ = await one_run(settings)
+
+    assert left == (None, a1, [a1, a2, b1])
+    assert opened == (None, a1, [a1, a2, b1])
+
+
+async def test_a_project_that_is_gone_falls_back_to_all_projects(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A project with no session left leaves the highlight on 'All projects'."""
+    a1, a2, b1 = three_sessions(fake)
+    write_state(settings.state_file, State("/p/gone", b1))
+    opened, _ = await one_run(settings)
+
+    assert opened == (None, b1, [a1, a2, b1])
+
+
+async def test_a_session_that_is_gone_falls_back_to_the_first_row(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A session that is not listed any more leaves the cursor on the first row."""
+    a1, a2, _b1 = three_sessions(fake)
+    write_state(settings.state_file, State("/p/a", "no-such-session"))
+    opened, _ = await one_run(settings)
+
+    assert opened == ("/p/a", a1, [a1, a2])
+
+
+async def test_remember_selection_off_writes_nothing_and_reads_nothing(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """With the switch off the file is left alone, and a start pays it no mind."""
+    a1, a2, b1 = three_sessions(fake)
+    settings.remember_selection = False
+    write_state(settings.state_file, State("/p/a", a2))
+    before = settings.state_file.read_bytes()
+    opened, left = await one_run(settings, projects=("down",), sessions=("down",))
+
+    assert opened == (None, a1, [a1, a2, b1])
+    assert left == ("/p/a", a2, [a1, a2])
+    assert settings.state_file.read_bytes() == before
+
+
+async def test_a_broken_state_file_starts_the_tool_with_no_warning(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A file that is not TOML at all opens the tool as a missing one does."""
+    a1, a2, b1 = three_sessions(fake)
+    settings.state_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.state_file.write_text("last_project = ", encoding="utf-8")
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        opened = picked(app)
+        said = toasts(app)
+
+    assert opened == (None, a1, [a1, a2, b1])
+    assert said == []
+
+
 async def test_the_arrows_walk_the_panes_the_way_tab_does(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -1567,6 +1679,8 @@ async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
 ) -> None:
     """The rows start at last used, newest first, as the settings say."""
     a1, a2, b1 = sized_sessions(fake)
+    # The second run opens on the first row, not on the one the first run left.
+    settings.remember_selection = False
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
@@ -3682,7 +3796,7 @@ async def test_the_f2_key_opens_the_settings_box_and_the_footer_lists_it(
     assert key == "Settings"
     assert opened is SettingsScreen
     assert tabs == [slug(group) for group in groups()]
-    assert rows[:3] == ["theme", "start_pane", "sort_column"]
+    assert rows[:3] == ["theme", "start_pane", "remember_selection"]
     assert rows[-2:] == ["confirm_delete", "confirm_purge"]
     assert len(rows) == len(OPTIONS)
     assert closed is MainScreen
@@ -3990,8 +4104,8 @@ async def test_tab_moves_from_one_option_to_the_next(
     assert seen == [
         ("Select", None),
         ("Select", None),
+        ("Switch", None),
         ("Button", "reset-all"),
-        ("Button", "save"),
     ]
 
 

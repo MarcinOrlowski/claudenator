@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from textual import work
 from textual.app import App, ComposeResult
@@ -30,6 +30,7 @@ from claudenator.core.errors import ClaudenatorError
 from claudenator.core.format import Formatter, plural_of
 from claudenator.core.model import Figures, Session, SessionDetails, TrashEntry
 from claudenator.core.settings import Settings
+from claudenator.core.state import State, read_state, write_state
 from claudenator.core.store import ScanResult, SessionStore, projects_of
 from claudenator.tui.about import AboutScreen
 from claudenator.tui.confirm import ConfirmScreen
@@ -219,6 +220,7 @@ class MainScreen(PaneScreen[None]):
         self._figures: dict[str, Figures] = {}
         self._details: dict[str, SessionDetails] = {}
         self._trash: list[TrashEntry] = []
+        self._picked = State()
 
     def compose(self) -> ComposeResult:
         yield TitleBar("Sessions")
@@ -242,8 +244,24 @@ class MainScreen(PaneScreen[None]):
         self.query_one(SessionsPane).sort_by(
             settings.sort_column, settings.sort_descending
         )
+        self._recall()
         self.load()
         self._focus_start_pane()
+
+    def _recall(self) -> None:
+        """Name the project and the session of the last run to the panes."""
+        settings = self.store.settings
+        if not settings.remember_selection:
+            return
+        state = read_state(settings.state_file)
+        self.query_one(ProjectsPane).preselect(state.project)
+        self.query_one(SessionsPane).preselect(state.session)
+
+    def on_unmount(self) -> None:
+        """The app quits so write what the next run puts back."""
+        settings = self.store.settings
+        if settings.remember_selection:
+            write_state(settings.state_file, self._picked)
 
     def _focus_start_pane(self) -> None:
         """Give the focus to the specific pane set in settings."""
@@ -284,6 +302,7 @@ class MainScreen(PaneScreen[None]):
 
     def on_projects_pane_chosen(self, event: ProjectsPane.Chosen) -> None:
         """List sessions of highlighted project."""
+        self._picked = replace(self._picked, project=event.path)
         if event.path is None:
             shown = self._sessions
         else:
@@ -298,6 +317,7 @@ class MainScreen(PaneScreen[None]):
 
     def on_sessions_pane_chosen(self, event: SessionsPane.Chosen) -> None:
         """The cursor sits on a session."""
+        self._picked = replace(self._picked, session=event.session_id)
         session = self._by_id.get(event.session_id) if event.session_id else None
         self.query_one(DetailsPane).show(self._details_of(session))
 
