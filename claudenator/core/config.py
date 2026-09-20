@@ -71,6 +71,12 @@ OPTIONS: tuple[Option, ...] = (
         choices=START_PANES,
     ),
     Option(
+        "remember_selection",
+        GENERAL,
+        "Remember selection",
+        "Highlight the project and the session of the last run at start.",
+    ),
+    Option(
         "sort_column",
         LISTS,
         "Sort column",

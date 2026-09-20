@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v1.2.0 (TBD)
+
+* App now remembers last selected project and session from last run.
+
 ## v1.1.0 (2026-09-20)
 
 * The pane frame is visible in every color theme. Focused is shown in bold.
