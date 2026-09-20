@@ -1,10 +1,10 @@
 ##################################################################################
 #
-# PR Branch Sync Notifier
+# PR: Tell open PRs the base moved
 #
 # This workflow triggers when the target branch (dev) is updated and dispatches
-# repository events to re-trigger the PR Branch Sync Check on all open PRs
-# targeting that branch.
+# repository events to re-trigger the "PR: Branch is up to date" check on all
+# open PRs targeting that branch.
 #
 # Why this is needed:
 # - The pr-branch-sync.yml workflow only triggers on PR events (opened, reopened,
@@ -23,7 +23,7 @@
 #
 ##################################################################################
 
-name: "PR Branch Sync Notifier"
+name: "PR: Tell open PRs the base moved"
 
 on:
   push:
@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   notify_open_prs:
-    name: "Notify Open PRs"
+    name: "Notify the open PRs"
     runs-on: ubuntu-latest
 
     steps:

@@ -4,7 +4,7 @@
 #
 ##################################################################################
 
-name: "Markdown Lint"
+name: "Lint: Markdown"
 
 on:
   push:
@@ -19,8 +19,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  markdown_lint:
-    name: "Markdown linter"
+  lint_markdown:
+    name: "markdownlint"
     runs-on: ${{ matrix.os }}
 
     strategy:

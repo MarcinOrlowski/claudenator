@@ -16,7 +16,7 @@ build-backend = "hatchling.build"
 [project]
 name = "claudenator"
 dynamic = ["version"]
-description = "The only Claude Code session manager you needca"
+description = "Hasta la vista, Claude sessions!"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE.md"]
@@ -32,21 +32,29 @@ keywords = [
   "cli",
 ]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Environment :: Console",
   "Intended Audience :: Developers",
+  "Operating System :: MacOS",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Utilities",
 ]
 dependencies = ["textual>=8,<9", "qrcat>=1,<2"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "black", "flake8", "flake8-docstrings"]
+release = ["build>=1.2", "twine>=6"]
 
 [project.urls]
 Homepage = "https://github.com/MarcinOrlowski/claudenator"
+Source = "https://github.com/MarcinOrlowski/claudenator"
+Changelog = "https://github.com/MarcinOrlowski/claudenator/blob/master/CHANGES.md"
 Issues = "https://github.com/MarcinOrlowski/claudenator/issues"
 
 [project.scripts]
@@ -59,7 +67,7 @@ path = "claudenator/__init__.py"
 packages = ["claudenator"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["claudenator", "tests"]
+only-include = ["claudenator", "tests", "CHANGES.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -237,21 +237,16 @@ class SessionStore:
                 continue
             yield ScanResult(session, figures)
 
-    def trash(self, wanted: str, reason: str | None = None) -> TrashEntry:
-        """Move a session to the Trash, by its id or a unique prefix of it.
+    def trash(self, wanted: str) -> TrashEntry:
+        """Move a session to the Trash."""
+        return self.trash_of(self.find_session(wanted))
 
-        Returns the entry that was made. Raises ``SessionIsLive`` for a session
-        used by a running process.
+    def trash_of(self, session: Session) -> TrashEntry:
+        """Trash given session.
+
+        Raises ``SessionIsLive`` for a session used by a running process.
         """
-        return self.trash_of(self.find_session(wanted), reason)
-
-    def trash_of(self, session: Session, reason: str | None = None) -> TrashEntry:
-        """Move a session already in hand to the Trash. Nothing is read again.
-
-        Returns the entry that was made. Raises ``SessionIsLive`` for a session
-        used by a running process.
-        """
-        return trash_session(self.settings, session, reason)
+        return trash_session(self.settings, session)
 
     def list_trash(self) -> list[TrashEntry]:
         """Every entry in the Trash, newest first. Read afresh on every call."""

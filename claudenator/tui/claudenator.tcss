@@ -72,15 +72,17 @@ Screen {
 
 ProjectsPane, SessionsPane, DetailsPane, DaysPane, EntriesPane, EntryPane, FilterBox {
     background: $surface;
-    border: round $border-blurred;
+    border: round $foreground-muted;
     border-title-color: $text-muted;
 }
 
-/* The keys of the pane itself sit on the bottom-right of its own frame. See ``KEY_STYLE``. */
+/* The focus shows in the tint and the bold title. The keys of the pane sit on the
+   bottom-right of its own frame. See ``KEY_STYLE``. */
 ProjectsPane:focus, SessionsPane:focus, DetailsPane:focus,
 DaysPane:focus, EntriesPane:focus, EntryPane:focus, FilterBox:focus {
-    border: round $border;
+    background-tint: $primary 20%;
     border-title-color: $text;
+    border-title-style: bold;
     border-subtitle-color: $text;
     border-subtitle-align: right;
 }
@@ -114,6 +116,16 @@ DetailsPane, EntryPane {
     height: auto;
     max-height: 50%;
     padding: 0 1;
+}
+
+/* The lines and the frame. A fixed height, so the table keeps the rest of the
+   room whatever sits under the cursor. */
+DetailsPane {
+    height: 8;
+}
+
+EntryPane {
+    height: 7;
 }
 
 /* The pane cuts a long line itself. */
@@ -161,10 +173,12 @@ FilterBox {
 /* The About box sits in the middle of the window, over the panes. */
 AboutScreen {
     align: center middle;
+    layers: base mark;
 }
 
 /* As wide and as tall as its lines */
 #about {
+    layer: base;
     width: auto;
     height: auto;
     max-width: 100%;
@@ -173,6 +187,19 @@ AboutScreen {
     background: $surface;
     border: round $border;
     border-title-color: $text;
+}
+
+/* The 'close' mark */
+#about-close {
+    layer: mark;
+    position: absolute;
+    width: auto;
+    color: $footer-key-foreground;
+    text-style: bold;
+}
+
+#about-close:hover {
+    background: $block-hover-background;
 }
 
 /* Key help. Key  Tool/Action. */

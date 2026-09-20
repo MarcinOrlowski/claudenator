@@ -1,21 +1,32 @@
-# Locks the conversation of every merged pull request, and of the ticket(s) that
-# pull request closed, so that follow-up talk starts a fresh ticket instead of
-# landing in a thread nobody watches any more.
+# Closes the ticket(s) a merged pull request names, then locks them and the pull
+# request conversation.
 #
-# Runs on "pull_request_target" and not on "pull_request", because this project
-# takes its contributions as pull requests from forks, and those only get a
-# read-only token on "pull_request", while locking needs write access. That is
-# safe here, as this workflow never checks out nor runs the pull request's code.
-# It only reads the pull request description, and does so through an environment
-# variable, never by pasting it into the script.
+# GitHub closes a referenced ticket by itself only when the pull request goes
+# into the default branch. This project merges into "dev", so GitHub closes
+# nothing and the workflow has to close the ticket on its own.
+#
+# Runs on "push" and not on "pull_request_target", because GitHub blocks
+# "pull_request_target" in public repositories from 2 November 2026. A "push"
+# event gets the write token that the close and the lock need, and it gets it
+# after a merge from a fork too, so it replaces the only reason this workflow
+# used "pull_request_target". There is no pull request in a "push" payload, so
+# the first step looks it up from the pushed commit.
+#
+# A "push" event also runs the copy of this file that sits on the branch pushed
+# to, while "pull_request_target" always ran the copy from the default branch.
+# A change here takes effect on "dev" at once.
+#
+# The workflow never checks out nor runs the pull request's code. It only reads
+# the pull request description, and does so through an environment variable,
+# never by pasting it into the script.
 #
 # Marcin Orlowski
 
-name: "Post-Merge Cleanup"
+name: "PR: Close and lock the ticket after merge"
 
 on:
-  pull_request_target:
-    types: [ closed ]
+  push:
+    branches: [ master, dev ]
 
 permissions:
   contents: read
@@ -23,18 +34,51 @@ permissions:
   pull-requests: write
 
 jobs:
-  lock:
-    name: "Lock merged PR and its ticket(s)"
+  close_and_lock_ticket:
+    name: "Lock the merged PR, close and lock its ticket(s)"
     runs-on: ubuntu-latest
-    # "closed" fires for merged pull requests and for dropped ones alike, and
-    # there's nothing to clean up after the latter.
-    if: github.event.pull_request.merged == true
 
     steps:
-    - name: "Lock the pull request conversation"
+    - name: "Find the pull request the push merged"
+      id: pr
       env:
         GH_TOKEN: ${{ github.token }}
-        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+
+        # The endpoint also answers with open pull requests that merely hold the
+        # commit, so filter on "merge_commit_sha". That is the pull request this
+        # push merged, for a merge commit and a squash commit alike.
+        pr="$(gh api "repos/${REPO}/commits/${SHA}/pulls" \
+                | jq --arg sha "${SHA}" 'map(select(.merge_commit_sha == $sha)) | first')"
+
+        if [[ "${pr}" == "null" ]]; then
+          # A commit pushed straight to the branch, with no pull request behind
+          # it. Nothing to clean up.
+          echo "No pull request merged by ${SHA}."
+          exit 0
+        fi
+
+        number="$(jq -r '.number' <<< "${pr}")"
+        echo "number=${number}" >> "${GITHUB_OUTPUT}"
+
+        # A description runs over many lines, so it needs a delimiter
+        declare -r EOM="PR_BODY_$(openssl rand -hex 16)"
+        {
+          echo "body<<${EOM}"
+          jq -r '.body // ""' <<< "${pr}"
+          echo "${EOM}"
+        } >> "${GITHUB_OUTPUT}"
+
+        echo "PR #${number} merged by ${SHA}."
+
+    - name: "Lock the pull request conversation"
+      if: steps.pr.outputs.number != ''
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR: ${{ steps.pr.outputs.number }}
         REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
@@ -48,24 +92,24 @@ jobs:
         gh api --silent -X PUT "repos/${REPO}/issues/${PR}/lock" -f "lock_reason=resolved"
         echo "PR #${PR} conversation locked."
 
-    - name: "Lock the ticket(s) the pull request closed"
-      # Runs even if locking the pull request itself went wrong, as the two are
-      # unrelated.
-      if: always()
+    - name: "Close and lock the ticket(s) the pull request names"
+      if: always() && steps.pr.outputs.number != ''
       env:
         GH_TOKEN: ${{ github.token }}
-        PR_BODY: ${{ github.event.pull_request.body }}
+        PR_BODY: ${{ steps.pr.outputs.body }}
+        BASE_REF: ${{ github.ref_name }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         REPO: ${{ github.repository }}
       run: |
         set -euo pipefail
 
-        # GitHub closes a referenced ticket as part of the merge, but the event
-        # that started this run can get here first, so give it time to catch up.
+        # GitHub closes a referenced ticket as part of the merge, but only a merge
+        # into the default branch (`master`) while I want them closed once done
+        # in `dev` to not clog up the ticket list.
         declare -r ATTEMPTS=3
         declare -r DELAY=5
 
-        # Formats kept in sync with ticket.yml, so that anything accepted there
-        # also gets locked here.
+        # Formats in sync with pr-ticket.yml
         declare -r KEYWORDS='close[sd]?|fix(e[sd])?|resolve[sd]?'
         declare -r URL="https://github\.com/${REPO//./\\.}/issues/"
 
@@ -77,35 +121,54 @@ jobs:
         )
 
         if [[ "${#tickets[@]}" -eq 0 ]]; then
-          echo "This pull request references no ticket. Nothing to lock."
+          # This pull request references no ticket. Nothing to do.
           exit 0
         fi
 
         echo "Referenced ticket(s): ${tickets[*]/#/#}"
 
         for ticket in "${tickets[@]}"; do
-          for (( attempt = 1; attempt <= ATTEMPTS; attempt++ )); do
-            if ! issue="$(gh api "repos/${REPO}/issues/${ticket}" 2>/dev/null)"; then
-              echo "#${ticket}: no such ticket. Skipped."
-              continue 2
-            fi
+          if ! issue="$(gh api "repos/${REPO}/issues/${ticket}" 2>/dev/null)"; then
+            echo "#${ticket}: no such ticket. Skipped."
+            continue
+          fi
 
-            if [[ "$(jq -r '.state' <<< "${issue}")" == "closed" ]]; then
-              break
-            fi
+          # The issues endpoint serves pull requests too, and those carry a
+          # "pull_request" key that plain issues do not have.
+          if [[ "$(jq -r 'has("pull_request")' <<< "${issue}")" == "true" ]]; then
+            echo "#${ticket}: a pull request, not a ticket. Skipped."
+            continue
+          fi
 
-            if (( attempt < ATTEMPTS )); then
+          # Let GitHub do the close where it can, so the ticket keeps GitHub's
+          # own "closed by" link.
+          if [[ "${BASE_REF}" == "${DEFAULT_BRANCH}" ]]; then
+            for (( attempt = 1; attempt < ATTEMPTS; attempt++ )); do
+              if [[ "$(jq -r '.state' <<< "${issue}")" == "closed" ]]; then
+                break
+              fi
+
               echo "#${ticket}: still open. Waiting ${DELAY}s for the merge to close it…"
               sleep "${DELAY}"
-            fi
-          done
 
-          # GitHub only closes referenced tickets for pull requests merged into
-          # the default branch, so an open one here is expected, not an error.
-          state="$(jq -r '.state' <<< "${issue}")"
-          if [[ "${state}" != "closed" ]]; then
-            echo "#${ticket}: ${state}, so not locking it."
-            continue
+              if ! issue="$(gh api "repos/${REPO}/issues/${ticket}" 2>/dev/null)"; then
+                echo "#${ticket}: could not be read again. Skipped."
+                continue 2
+              fi
+            done
+          fi
+
+          if [[ "$(jq -r '.state' <<< "${issue}")" == "closed" ]]; then
+            # An already closed ticket keeps its own reason
+            echo "#${ticket}: already closed as $(jq -r '.state_reason // "completed"' <<< "${issue}")."
+          else
+            if gh api --silent -X PATCH "repos/${REPO}/issues/${ticket}" \
+                 -f "state=closed" -f "state_reason=completed"; then
+              echo "#${ticket}: closed."
+            else
+              echo "#${ticket}: could not be closed, so not locking it."
+              continue
+            fi
           fi
 
           if [[ "$(jq -r '.locked' <<< "${issue}")" == "true" ]]; then

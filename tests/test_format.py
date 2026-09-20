@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -396,6 +395,71 @@ def test_describe_figures_with_nothing_counted_shows_dashes_not_blanks() -> None
     assert lines["Tool calls"] == "0"
 
 
+def test_describe_short_names_the_six_lines_of_the_pane_and_no_other() -> None:
+    """The short list is its own list. A line added to ``describe`` stays out of it.
+
+    Name every line here, so the pane holds what it is meant to hold and the
+    room it needs does not grow on its own. A deep scan adds none: the figures
+    are in the full view alone.
+    """
+    fmt = Formatter(Settings(), now=NOW)
+
+    lines = fmt.describe_short(SessionDetails(session(), 0))
+    scanned = fmt.describe_short(SessionDetails(session(), 0, figures()))
+
+    assert lines == [
+        ("Id", "s"),
+        ("Title", "Hello"),
+        ("Project", "/home/u/p"),
+        ("Git branch", "dev"),
+        ("Last used", f"{fmt.absolute(NOW)} (just now)"),
+        ("Total", "2.1K"),
+    ]
+    assert scanned == lines
+
+
+def test_describe_short_leaves_the_deeper_dive_to_the_full_list() -> None:
+    """Where the files sit, what each part takes and the state marks stay out."""
+    fmt = Formatter(Settings(), now=NOW)
+    forked = SessionDetails(
+        session(fork_parent="mum", live=True, pid=42), 10, figures()
+    )
+
+    short = [label for label, _ in fmt.describe_short(forked)]
+    full = [label for label, _ in fmt.describe(forked)]
+
+    assert set(short) < set(full)
+    assert not set(short) & {
+        "Folder",
+        "Transcript",
+        "Sidecar",
+        "Created",
+        "Claude Code",
+        "Fork of",
+        "Inherited",
+        "Live",
+        "Damaged",
+        "Turns",
+        "Tokens",
+        "Scanned",
+    }
+
+
+def test_describe_short_of_a_damaged_session_still_reads_as_a_session() -> None:
+    """A transcript that gave almost nothing still fills every line, with a dash."""
+    fmt = Formatter(Settings(), now=NOW)
+    poor = session(
+        title="s", title_source="id", git_branch=None, created=None, damaged=True
+    )
+
+    lines = dict(fmt.describe_short(SessionDetails(poor, 0)))
+
+    assert lines["Id"] == "s"
+    assert lines["Title"] == "s"
+    assert lines["Git branch"] == "-"
+    assert lines["Total"] == "2.1K"
+
+
 def test_figures_line_says_the_headline_numbers_in_one_line() -> None:
     """The line a notification carries: the three numbers, each with its noun."""
     fmt = Formatter(Settings(), now=NOW)
@@ -468,7 +532,6 @@ def entry(size: int, parts: tuple[Part, ...] = ()) -> TrashEntry:
         path=Path("/t/2026-09-14T12-00-00_s"),
         session_id="s",
         trashed_at=NOW,
-        reason=None,
         title="Hello",
         project_path="/home/u/p",
         parts=parts,
@@ -521,12 +584,45 @@ def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -
         ("Project", "/home/u/p"),
         # The details hold both forms, whatever a column shows.
         ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
-        ("Reason", "-"),
         ("Size", "2.1K"),
         ("Entry", "/t/2026-09-14T12-00-00_s"),
         ("Transcript", "100B  /c/projects/p/s.jsonl"),
         ("Sidecar", "2.0K  /c/projects/p/s"),
         ("Session-env", "4B  /c/session-env/s"),
     ]
-    with_reason = fmt.describe_entry(replace(entry(0, parts), reason="pressed d"))
-    assert with_reason[4] == ("Reason", "pressed d")
+
+
+def test_describe_entry_short_names_the_five_lines_of_the_pane_and_no_other() -> None:
+    """The short list is its own list."""
+    fmt = Formatter(Settings(list_time_format="absolute"), now=NOW)
+    parts = (
+        Part("transcript", Path("/c/projects/p/s.jsonl"), Path("claude/x"), False, 100),
+        Part("sidecar", Path("/c/projects/p/s"), Path("claude/y"), True, 2048),
+        Part("session-env", Path("/c/session-env/s"), Path("claude/z"), True, 4),
+    )
+
+    lines = fmt.describe_entry_short(entry(0, parts))
+
+    assert lines == [
+        ("Session", "s"),
+        ("Title", "Hello"),
+        ("Project", "/home/u/p"),
+        ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
+        ("Size", "2.1K"),
+    ]
+
+
+def test_describe_entry_short_leaves_the_deeper_dive_to_the_full_list() -> None:
+    """Where the entry folder sits, and what each part takes, stay out."""
+    fmt = Formatter(Settings(), now=NOW)
+    parts = (
+        Part("transcript", Path("/c/projects/p/s.jsonl"), Path("claude/x"), False, 100),
+        Part("sidecar", Path("/c/projects/p/s"), Path("claude/y"), True, 2048),
+    )
+    many = entry(0, parts)
+
+    short = [label for label, _ in fmt.describe_entry_short(many)]
+    full = [label for label, _ in fmt.describe_entry(many)]
+
+    assert set(short) < set(full)
+    assert not set(short) & {"Entry", "Transcript", "Sidecar"}

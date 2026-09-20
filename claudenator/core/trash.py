@@ -185,7 +185,6 @@ def write_manifest(entry: TrashEntry) -> Path:
 def trash_session(
     settings: Settings,
     session: Session,
-    reason: str | None = None,
     now: datetime | None = None,
 ) -> TrashEntry:
     """Move session into Trash entry and return it."""
@@ -208,7 +207,6 @@ def trash_session(
             path=entry_dir,
             session_id=session.id,
             trashed_at=moment,
-            reason=reason,
             title=session.title,
             project_path=session.project_path,
             parts=tuple(parts),

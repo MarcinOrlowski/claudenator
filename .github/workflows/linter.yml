@@ -4,7 +4,7 @@
 #
 ##################################################################################
 
-name: "Code lint"
+name: "Lint: Python"
 
 on:
   push:
@@ -19,8 +19,8 @@ permissions:
   pull-requests: read
 
 jobs:
-  unittests:
-    name: "Linting"
+  lint_python:
+    name: "flake8"
     runs-on: ${{ matrix.os }}
 
     strategy:

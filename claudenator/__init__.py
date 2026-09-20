@@ -12,7 +12,7 @@
 """
 
 __title__ = "claudenator"
-__version__ = "1.0.0"
-__description__ = "The only Claude Code session manager you need"
+__version__ = "1.1.0"
+__description__ = "Hasta la vista, Claude sessions!"
 __author__ = "Marcin Orlowski"
 __url__ = "https://github.com/MarcinOrlowski/claudenator"

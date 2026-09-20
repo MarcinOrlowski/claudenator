@@ -92,6 +92,46 @@ from tests.fabricate import (
 
 WIDE = (140, 40)
 
+# Every pane that carries a frame, in both views.
+PANES = (
+    ProjectsPane,
+    SessionsPane,
+    DetailsPane,
+    DaysPane,
+    EntriesPane,
+    EntryPane,
+    FilterBox,
+)
+
+FRAME_GAP = 0.15
+FOCUS_GAP = 0.05
+
+
+def colour_gap(one: Color, two: Color) -> float:
+    """How far two colours stand apart: 0.0 for a pair that matches, 1.0 for black on white."""
+    return max(abs(first - second) for first, second in zip(one.rgb, two.rgb)) / 255
+
+
+def frame_gaps(app: ClaudenatorApp, theme: str) -> list[tuple[str, str, float]]:
+    """How far the frame of every pane on view stands from the bg color."""
+    found: list[tuple[str, str, float]] = []
+    for kind in PANES:
+        for pane in app.screen.query(kind):
+            _style, colour = pane.styles.border_top
+            back = pane.background_colors[1]
+            if colour.ansi is None and back.ansi is None:
+                found.append((theme, kind.__name__, colour_gap(back + colour, back)))
+    return found
+
+
+def note_focus(app: ClaudenatorApp, moved: dict[str, float]) -> None:
+    """Record how far the pane that has the focus moved from its own background."""
+    pane = app.focused
+    if isinstance(pane, PANES):
+        moved[type(pane).__name__] = colour_gap(
+            pane.background_colors[1], pane.styles.background
+        )
+
 
 def columns(table: DataTable) -> list[str]:
     """The column labels, left to right."""
@@ -321,6 +361,94 @@ async def test_q_still_quits_while_the_window_is_too_small(
     assert running is False
 
 
+async def test_ctrl_c_ends_the_tool_as_q_does(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'CTRL+c' quits same as 'q' would"""
+    three_sessions(fake)
+    by_q = ClaudenatorApp(settings)
+    async with by_q.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("q")
+        await pilot.pause()
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        running = app.is_running
+        said = toasts(app)
+
+    assert running is False
+    assert said == []
+    assert app.return_code == by_q.return_code
+
+
+async def test_ctrl_c_ends_the_tool_from_the_filter_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'ctrl+c' quits from the '/' box. The copy that ``Input`` gives it goes."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("slash", "a")
+        await pilot.pause()
+        typing = type(app.focused)
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        running = app.is_running
+
+    assert typing is FilterBox
+    assert running is False
+
+
+async def test_ctrl_c_ends_the_tool_from_a_settings_field(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'ctrl+c' quits while a Settings field has the focus."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "time_pattern").query_one(Input).focus()
+        await pilot.pause()
+        typing = isinstance(app.focused, Input)
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+        running = app.is_running
+
+    assert typing is True
+    assert running is False
+
+
+async def test_ctrl_c_ends_the_tool_while_a_popup_is_open(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """'ctrl+c' quits from a popup. It does not merely close it."""
+    three_sessions(fake)
+    settings.confirm_delete = True
+    narrow = (settings.stack_panes_below - 1, 20)
+    popups: list[type] = []
+    alive: list[bool] = []
+    keys = ((WIDE, "question_mark"), (WIDE, "f2"), (WIDE, "d"), (narrow, "enter"))
+    for size, key in keys:
+        app = ClaudenatorApp(settings)
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            await pilot.press(key)
+            await pilot.pause()
+            popups.append(type(app.screen))
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            alive.append(app.is_running)
+
+    assert popups == [AboutScreen, SettingsScreen, ConfirmScreen, FullScreen]
+    assert alive == [False] * 4
+
+
 async def test_the_focus_never_goes_missing_when_the_window_changes_size(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -393,6 +521,58 @@ async def test_enter_on_a_session_opens_its_details_over_the_whole_window(
     assert re.search(rf"^Id: +{a1}$", text, re.M)
     assert re.search(r"^Title: +A1 ", text, re.M)
     assert closed == (MainScreen, SessionsPane)
+
+
+async def test_enter_in_the_details_pane_opens_the_same_full_view_as_the_table(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The pane holds the vital lines, so 'enter' on it opens the full list too."""
+    a1, _a2, _b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        focused = type(app.focused)
+        key = shown_keys(app).get("enter")
+        await pilot.press("enter")
+        await pilot.pause()
+        box = app.screen.query_one(Lines)
+        opened = type(app.screen), str(box.border_title)
+        text = box.text
+
+    assert focused is DetailsPane
+    assert key == "More info"
+    assert opened == (FullScreen, "Details")
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
+    assert re.search(r"^Folder: +\S+/claude/projects/-p-a$", text, re.M)
+
+
+async def test_enter_in_the_entry_pane_opens_the_same_full_view_as_the_table(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash pane answers 'enter' the same way, and names it the same way."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        await pilot.press("tab")
+        await pilot.pause()
+        focused = type(app.focused)
+        key = shown_keys(app).get("enter")
+        await pilot.press("enter")
+        await pilot.pause()
+        box = app.screen.query_one(Lines)
+        opened = type(app.screen), str(box.border_title)
+        text = box.text
+
+    assert focused is EntryPane
+    assert key == "More info"
+    assert opened == (FullScreen, "Entry")
+    assert re.search(rf"^Session: +{b1}$", text, re.M)
 
 
 async def test_in_the_trash_the_panes_follow_the_same_widths_and_enter_opens_an_entry(
@@ -702,10 +882,10 @@ async def test_every_theme_gives_the_states_colours_of_their_own(
     }
 
 
-async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
+async def test_the_details_pane_shows_the_vital_lines_of_the_session_under_the_cursor(
     fake: FakeClaude, proc: FakeProc, settings: Settings
 ) -> None:
-    """The details pane shows the session under the cursor in full."""
+    """The pane says which session this is. The rest of the lines stay in the full view."""
     sid = new_id()
     fake.transcript(
         "/p/x",
@@ -725,25 +905,19 @@ async def test_the_details_pane_shows_the_session_under_the_cursor_in_full(
         text = pane.text
         static = app.query_one("#details-text", Static)
         painted = str(static.render())
-        expected = painted_lines(pane, fmt.describe(store.details(sid)))
+        expected = painted_lines(pane, fmt.describe_short(store.details(sid)))
 
     assert painted == text
     assert text.splitlines() == expected
-    assert f"Id:          {sid}" in text
-    assert "Project:     /p/x  (from transcript)" in text
-    assert re.search(r"^Folder: +\S+/claude/projects/-p-x$", text, re.M)
-    assert "Git branch:  dev" in text
-    assert f"Created:     {fmt.details_timestamp(session.created)}" in text
-    assert f"Last used:   {fmt.details_timestamp(session.last_used)}" in text
-    assert "Claude Code: 2.1.270" in text
-    assert f"Transcript:  {fmt.size(session.transcript_size)}  {sid}.jsonl" in text
-    assert (
-        f"Sidecar:     {fmt.size(session.sidecar_size)}  {sid}  (3 subagent transcripts)"
-        in text
-    )
-    assert f"Total:       {fmt.size(session.size)}" in text
-    assert "Live:        yes  (pid 4242)" in text
-    assert "Fork of:" not in text
+    assert re.search(rf"^Id: +{sid}$", text, re.M)
+    assert re.search(r"^Title: +Hello$", text, re.M)
+    assert re.search(r"^Project: +/p/x$", text, re.M)
+    assert re.search(r"^Git branch: +dev$", text, re.M)
+    used = re.escape(fmt.details_timestamp(session.last_used))
+    assert re.search(rf"^Last used: +{used}$", text, re.M)
+    assert re.search(rf"^Total: +{fmt.size(session.size)}$", text, re.M)
+    hidden = ("Folder", "Transcript", "Sidecar", "Created", "Claude Code", "Live")
+    assert not [label for label in hidden if f"{label}:" in text]
 
 
 async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_not(
@@ -757,9 +931,12 @@ async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_no
         await pilot.pause()
         text = app.query_one(DetailsPane).text
         cell = str(app.query_one(SessionsPane).get_cell(sid, "last_used"))
+        await pilot.press("enter")
+        await pilot.pause()
+        full = app.screen.query_one(Lines).text
 
     both = r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \((just now|[\dymdhs ]+ ago)\)"
-    assert re.search(rf"^Created: +{both}$", text, re.M)
+    assert re.search(rf"^Created: +{both}$", full, re.M)
     assert re.search(rf"^Last used: +{both}$", text, re.M)
     assert re.fullmatch(r"just now|[\dymdhs ]+ ago", cell)
     assert settings.list_time_format == "relative"
@@ -768,7 +945,11 @@ async def test_the_details_name_the_moment_and_how_long_ago_but_a_column_does_no
 async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The details of a fork name the parent and the inherited bytes."""
+    """The details of a fork name the parent and the inherited bytes.
+
+    The small pane does not: the state column already marks a fork, and the
+    parent is a deeper dive.
+    """
     parent, child = new_id(), new_id()
     fake.transcript("/p/x", parent, mtime=1000)
     fake.transcript(
@@ -779,9 +960,13 @@ async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
-        text = app.query_one(DetailsPane).text
+        pane = app.query_one(DetailsPane).text
+        await pilot.press("enter")
+        await pilot.pause()
+        text = app.screen.query_one(Lines).text
 
     assert details.inherited_bytes > 0
+    assert "Fork of:" not in pane
     assert f"Fork of:     {parent}" in text
     assert (
         f"Inherited:   {fmt.size(details.inherited_bytes)} came from the parent" in text
@@ -803,7 +988,7 @@ async def test_moving_the_cursor_changes_the_details(
         text = app.query_one(DetailsPane).text
 
     assert selected == a2
-    assert f"Id:          {a2}" in text
+    assert re.search(rf"^Id: +{a2}$", text, re.M)
     assert a1 not in text
 
 
@@ -848,9 +1033,12 @@ async def test_with_no_session_at_all_the_panes_are_empty_but_the_screen_works(
     assert running is False
 
 
-def test_no_key_is_bound_on_the_app_or_the_screen() -> None:
-    """No key is bound on the app or the screen: every key belongs to a pane."""
-    assert "BINDINGS" not in ClaudenatorApp.__dict__
+def test_only_ctrl_c_is_bound_on_the_app_and_no_key_on_the_screen() -> None:
+    """Every key belongs to a pane. Only 'ctrl+c' is on the app, and it must be:
+    it quits from a popup too, which no pane key reaches.
+    """
+    on_app = {binding.key for binding in ClaudenatorApp.__dict__["BINDINGS"]}
+    assert on_app == {"ctrl+c"}
     assert "BINDINGS" not in MainScreen.__dict__
     assert "BINDINGS" not in TrashScreen.__dict__
     views = {
@@ -886,8 +1074,8 @@ async def test_the_sessions_pane_has_the_focus_at_start_and_lists_every_session(
     assert listed == ([a1, a2, b1], a1)
     assert project == (None, ALL_PROJECTS)
     assert keys["d"] == "Delete"
-    assert keys["enter"] == "Details"
-    assert f"Id:          {a1}" in text
+    assert keys["enter"] == "More info"
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
 
 
 async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
@@ -974,8 +1162,7 @@ async def test_the_footer_lists_the_keys_of_the_focused_pane_and_follows_focus(
     assert focus == [SessionsPane, DetailsPane, ProjectsPane, SessionsPane]
     assert keys[0] == keys[3]
     assert keys[0] != keys[1]
-    assert keys[0]["enter"] == "Details"
-    assert "enter" not in keys[1]
+    assert keys[0]["enter"] == keys[1]["enter"] == "More info"
     assert "enter" not in keys[2]
     for listed in keys:
         assert {"f2", "q"} <= set(listed)
@@ -997,14 +1184,20 @@ async def test_the_footer_orders_the_keys_of_a_pane_by_the_row_then_the_list(
         entries = footer_keys(app)
 
     assert sessions == [
-        "ENTER Details",
+        "ENTER More info",
         "d Delete",
         "c Scan",
         "C Scan all",
         "F2 Settings",
         "q Quit",
     ]
-    assert entries == ["ENTER Entry", "u Restore", "x Purge", "F2 Settings", "q Quit"]
+    assert entries == [
+        "ENTER More info",
+        "u Restore",
+        "x Purge",
+        "F2 Settings",
+        "q Quit",
+    ]
 
 
 async def test_the_footer_holds_the_keys_of_the_tool_at_its_right_edge(
@@ -1051,7 +1244,7 @@ async def test_the_pane_with_the_focus_shows_its_own_keys_on_its_frame(
 
     assert on_table == "r Reload  o Sort  O Reverse  / Filter"
     assert quiet == ["", ""]
-    assert on_details == "r Reload"
+    assert on_details == ""
     assert on_projects == "r Reload  / Filter"
     assert table_now == ""
 
@@ -1124,6 +1317,28 @@ async def test_enter_on_a_project_moves_into_its_sessions(
     assert selected == a1
 
 
+async def test_a_click_on_a_project_moves_the_highlight_and_keeps_the_focus(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A click on a project narrows the sessions. The focus stays on the pane."""
+    a1, a2, b1 = three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.query_one(SessionsPane)
+        pane = app.query_one(ProjectsPane)
+        # y 0 is the frame, so y 2 is the second line: the first project.
+        await pilot.click(ProjectsPane, offset=(2, 2))
+        await pilot.pause()
+        on_a = type(app.focused), pane.selected_path, rows(table)
+        await pilot.click(ProjectsPane, offset=(2, 1))
+        await pilot.pause()
+        on_all = type(app.focused), pane.selected_path, rows(table)
+
+    assert on_a == (ProjectsPane, "/p/a", [a1, a2])
+    assert on_all == (ProjectsPane, None, [a1, a2, b1])
+
+
 async def test_q_quits_from_every_pane(fake: FakeClaude, settings: Settings) -> None:
     """The 'q' key quits from every pane."""
     three_sessions(fake)
@@ -1170,6 +1385,85 @@ async def test_every_theme_the_library_ships_applies(
     assert len(applied) >= 20
 
 
+async def test_the_pane_frame_holds_against_its_background_in_every_theme(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Ensure pane frame is visible and does not use similar colour"""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    gaps: list[tuple[str, str, float]] = []
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for name in sorted(BUILTIN_THEMES):
+            app.theme = name
+            await pilot.press("slash")
+            await pilot.pause()
+            gaps += frame_gaps(app, name)
+            await pilot.press("escape", "t")
+            await pilot.pause()
+            gaps += frame_gaps(app, name)
+            await pilot.press("s")
+            await pilot.pause()
+
+    assert [row for row in gaps if row[2] < FRAME_GAP] == []
+    assert {name for _theme, name, _gap in gaps} == {kind.__name__ for kind in PANES}
+
+
+async def test_the_focus_shows_in_the_background_and_the_bold_title_in_every_theme(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The pane with the focus takes a tint and a bold border title, in every theme."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    gaps: list[tuple[str, float]] = []
+    titles: set[tuple[str, str]] = set()
+    held: set[tuple[bool, bool]] = set()
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        for name in sorted(BUILTIN_THEMES):
+            app.theme = name
+            await pilot.pause()
+            on = app.query_one(SessionsPane)
+            off = app.query_one(ProjectsPane)
+            held.add((on.has_focus, off.has_focus))
+            titles.add(
+                (str(on.styles.border_title_style), str(off.styles.border_title_style))
+            )
+            lit, dim = on.background_colors[1], off.background_colors[1]
+            if lit.ansi is None and dim.ansi is None:
+                gaps.append((name, colour_gap(lit, dim)))
+
+    assert held == {(True, False)}
+    assert titles == {("bold", "none")}
+    assert [row for row in gaps if row[1] < FOCUS_GAP] == []
+
+
+async def test_every_pane_lifts_its_background_when_it_takes_the_focus(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The background of a pane moves the moment the focus lands on it."""
+    _a1, _a2, b1 = three_sessions(fake)
+    SessionStore(settings).trash(b1)
+    app = ClaudenatorApp(settings)
+    moved: dict[str, float] = {}
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("slash")
+        await pilot.pause()
+        note_focus(app, moved)
+        await pilot.press("escape")
+        for view in ("t", "s"):
+            for _turn in range(4):
+                await pilot.pause()
+                note_focus(app, moved)
+                await pilot.press("tab")
+            await pilot.press(view)
+
+    assert set(moved) == {kind.__name__ for kind in PANES}
+    assert [name for name, gap in moved.items() if gap < FOCUS_GAP] == []
+
+
 def state(table: SessionsPane) -> tuple[list[str], str | None, tuple[str, bool]]:
     """The rows, the selected id and the sort order, in one tuple."""
     return rows(table), table.selected_id, table.sorting
@@ -1200,7 +1494,7 @@ async def test_r_reloads_and_the_cursor_finds_its_session_by_id(
     assert before == (a2, 1, [a1, a2])
     assert after == (a2, 2, [new, a1, a2])
     assert project == "/p/a"
-    assert f"Id:          {a2}" in text
+    assert re.search(rf"^Id: +{a2}$", text, re.M)
 
 
 async def test_after_a_reload_a_gone_session_hands_its_row_to_the_next_one(
@@ -1514,7 +1808,7 @@ async def test_d_moves_the_session_under_the_cursor_to_the_trash_with_no_reload(
 
     assert (keys["d"], enabled) == ("Delete", True)
     assert after == ([a2, b1], a2, 0)
-    assert f"Id:          {a2}" in text
+    assert re.search(rf"^Id: +{a2}$", text, re.M)
     assert focused is SessionsPane
     assert shown == []
     assert trashed(settings) == [a1]
@@ -1631,7 +1925,7 @@ async def test_the_last_session_of_a_project_takes_the_project_with_it(
     assert prompts == [ALL_PROJECTS, "/p/a"]
     assert after == ("/p/a", [a1, a2], a1, 0)
     assert focused is SessionsPane
-    assert f"Id:          {a1}" in text
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
     assert trashed(settings) == [b1]
 
 
@@ -1812,18 +2106,41 @@ async def test_the_trash_lists_its_entries_newest_first_grouped_by_day(
     assert entered is EntriesPane
 
 
-async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
+async def test_a_click_on_a_day_moves_the_highlight_and_keeps_the_focus(
     fake: FakeClaude, settings: Settings
 ) -> None:
-    """The entry pane shows the entry under the cursor: the session, when, the size, the parts."""
+    """A click on a day narrows the entries. The focus stays on the pane."""
+    e_a1, e_a2, _e_b1 = two_days_of_trash(fake, settings)
+    fmt = Formatter(settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        pane = app.screen.query_one(DaysPane)
+        # y 0 is the frame, so y 2 is the second line: the newest day.
+        await pilot.click(DaysPane, offset=(2, 2))
+        await pilot.pause()
+        clicked = type(app.focused), pane.selected_day, rows(table)
+        await pilot.press("enter")
+        await pilot.pause()
+        entered = type(app.focused)
+
+    assert clicked == (DaysPane, fmt.day(e_a1.trashed_at), [e_a1.id, e_a2.id])
+    assert entered is EntriesPane
+
+
+async def test_the_entry_pane_shows_the_vital_lines_of_the_entry_under_the_cursor(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The pane says which entry this is. The folder and the parts stay in the full view."""
     sid, other = new_id(), new_id()
     parts = fake.every_part("/p/x", sid)
     fake.transcript("/p/x", other)
     store = SessionStore(settings)
     later = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
-    entry = trash_session(
-        settings, store.find_session(sid), reason="pressed d", now=later
-    )
+    entry = trash_session(settings, store.find_session(sid), now=later)
     trash_session(settings, store.find_session(other), now=later - timedelta(hours=1))
     fmt = Formatter(settings)
     app = ClaudenatorApp(settings)
@@ -1834,24 +2151,70 @@ async def test_the_entry_pane_shows_the_entry_under_the_cursor_with_every_part(
         pane = app.screen.query_one(EntryPane)
         first = pane.text
         painted = str(app.screen.query_one("#entry-text", Static).render())
-        expected = painted_lines(pane, fmt.describe_entry(entry))
+        expected = painted_lines(pane, fmt.describe_entry_short(entry))
         await pilot.press("down")
         await pilot.pause()
         second = pane.text
+        await pilot.press("up")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        full = app.screen.query_one(Lines).text
 
     assert painted == first
     assert first.splitlines() == expected
     assert re.search(rf"^Session: +{sid}$", first, re.M)
+    assert re.search(r"^Title: +\S", first, re.M)
+    assert re.search(r"^Project: +/p/x$", first, re.M)
     stamp = re.escape(fmt.details_timestamp(later))
     assert re.search(rf"^Trashed: +{stamp}$", first, re.M)
-    assert re.search(r"^Reason: +pressed d$", first, re.M)
     assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
+    hidden = ("Entry", "Transcript", "Sidecar", "Session-env", "Todo")
+    assert not [label for label in hidden if f"{label}:" in first]
+    # The full view keeps every line the pane leaves out.
+    assert re.search(rf"^Entry: +\S*/{re.escape(entry.id)}$", full, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
         name = re.escape(parts[kind].name)
         line = rf"^{kind.capitalize()}: +(\S+  )?\S*/{name}$"
-        assert re.search(line, first, re.M), kind
+        assert re.search(line, full, re.M), kind
     assert re.search(rf"^Session: +{other}$", second, re.M)
     assert sid not in second
+
+
+async def test_the_entry_pane_takes_five_lines_whatever_the_entry_holds(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Five lines of quick detail view."""
+    many, one = new_id(), new_id()
+    fake.every_part("/p/x", many)
+    fake.transcript("/p/x", one)
+    store = SessionStore(settings)
+    entry = trash_session(settings, store.find_session(many))
+    trash_session(settings, store.find_session(one))
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=(settings.stack_panes_below, 16)) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        pane = app.screen.query_one(EntryPane)
+        table = app.screen.query_one(EntriesPane)
+        big = (
+            pane.region.height,
+            pane.show_vertical_scrollbar,
+            len(pane.text.splitlines()),
+        )
+        await pilot.press("down")
+        await pilot.pause()
+        small = (
+            pane.region.height,
+            pane.show_vertical_scrollbar,
+            len(pane.text.splitlines()),
+        )
+        room = table.region.height
+
+    assert len(entry.parts) > 1
+    assert big == small == (7, False, 5)
+    assert room > 0
 
 
 async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_reload(
@@ -1887,7 +2250,7 @@ async def test_u_puts_the_entry_back_and_the_session_is_listed_again_with_no_rel
     assert not entry.path.exists()
     assert trashed(settings) == []
     assert after == ([ALL_PROJECTS, "/p/a", "/p/b"], ([a1, a2, b1], a1, 0))
-    assert f"Id:          {a1}" in text
+    assert re.search(rf"^Id: +{a1}$", text, re.M)
 
 
 async def test_a_restore_blocked_by_an_occupied_path_reports_the_clash_and_changes_nothing(
@@ -2110,7 +2473,7 @@ async def test_a_key_with_a_word_for_a_name_is_written_in_capitals(
         await pilot.pause()
         on_filter = app.screen._compositor.render_strips()[-1].text
 
-    assert "ENTER Details" in on_panes
+    assert "ENTER More info" in on_panes
     assert "d Delete" in on_panes
     assert in_full.strip() == "ESC Close"
     assert on_filter.strip() == "ENTER Done  ESC Clear"
@@ -2780,6 +3143,59 @@ async def test_every_key_of_the_about_box_closes_it_and_q_does_not_quit(
     assert running is True
 
 
+async def test_a_click_on_the_close_mark_shuts_the_about_box(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """Click ob '[x]' mark dismisses About box"""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        before = type(app.focused)
+        await pilot.click("#about-key")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, AboutScreen)
+        mark = screen.query_one("#about-close", Static)
+        shown = str(mark.content)
+        top = screen.query_one("#about", VerticalScroll).region
+        seat = mark.region
+        paint = mark.rich_style
+        key_colour = app.theme_variables["footer-key-foreground"].lower()
+        await pilot.click("#about-close")
+        await pilot.pause()
+        after = type(app.screen), type(app.focused)
+
+    assert shown == AboutScreen.CLOSE_HINT
+    assert paint.color is not None and paint.color.name == key_colour
+    assert paint.bold is True
+    assert seat.y == top.y, "the mark is not on the top line of the frame"
+    assert seat.right == top.right - 2, "the mark is not at the right of the frame"
+    assert before == SessionsPane
+    assert after == (MainScreen, SessionsPane)
+
+
+async def test_the_close_mark_follows_the_about_box_when_the_window_grows(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A new window size moves the box, and the mark stays on its top right corner."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    seats: list[tuple[int, int]] = []
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        for size in ((80, 24), (100, 30), (70, 20)):
+            await pilot.resize_terminal(*size)
+            await pilot.pause()
+            box = app.screen.query_one("#about", VerticalScroll).region
+            mark = app.screen.query_one("#about-close", Static).region
+            seats.append((mark.right - box.right, mark.y - box.y))
+
+    assert seats == [(-2, 0)] * 3
+
+
 async def test_the_about_key_works_on_every_pane_and_in_the_trash(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -2817,10 +3233,10 @@ async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wr
 ) -> None:
     """A long line in the details pane is cut at the slashes, im the middle"""
     sid = new_id()
-    fake.transcript(LONG, sid, session_records(sid, LONG, custom_title="Hello"))
-    fake.sidecar(LONG, sid, agents=3)
+    deep = LONG + "/with/many/more/parts/that/go/on/and/on/and/on"
+    fake.transcript(deep, sid, session_records(sid, deep, custom_title="Hello"))
+    fake.sidecar(deep, sid, agents=3)
     details = SessionStore(settings).details(sid)
-    folder = str(details.session.transcript_path.parent)
     fmt = Formatter(settings)
     app = ClaudenatorApp(settings)
     async with app.run_test(size=(110, 24)) as pilot:
@@ -2828,22 +3244,21 @@ async def test_a_long_line_in_the_details_pane_is_cut_in_the_middle_and_never_wr
         pane = app.query_one(DetailsPane)
         static = app.query_one("#details-text", Static)
         narrow = pane.text.splitlines()
-        expected = painted_lines(pane, fmt.describe(details))
+        expected = painted_lines(pane, fmt.describe_short(details))
         room = pane.scrollable_content_region.width
         height = static.region.height
-        scrollbar = pane.show_vertical_scrollbar
         await pilot.resize_terminal(220, 60)
         await pilot.pause()
         wide = pane.text.splitlines()
 
-    shown = next(line for line in narrow if line.startswith("Folder:"))
-    assert scrollbar and len(folder) > room
+    shown = next(line for line in narrow if line.startswith("Project:"))
+    assert len(deep) > room
     assert narrow == expected
     assert all(len(line) <= room for line in narrow)
     assert height == len(narrow) == len(wide)
     assert settings.cut_mark in shown
-    assert shown.endswith("/" + folder.rsplit("/", 1)[1])
-    assert f"Folder:      {folder}" in wide
+    assert shown.endswith("/" + deep.rsplit("/", 1)[1])
+    assert f"Project:    {deep}" in wide
 
 
 def test_the_stylesheet_names_no_literal_colour() -> None:
@@ -2869,13 +3284,22 @@ def test_the_stylesheet_names_no_literal_colour() -> None:
     assert {
         "$surface",
         "$border",
-        "$border-blurred",
+        "$foreground-muted",
+        "$primary",
         "$text",
         "$text-muted",
         "$text-error",
         "$text-success",
         "$text-primary",
     } <= variables
+
+
+def test_the_stylesheet_paints_no_frame_with_border_blurred() -> None:
+    """``$border-blurred`` is the surface colour a hair darker: it makes no frame."""
+    path = Path(claudenator.tui.app.__file__).with_name(ClaudenatorApp.CSS_PATH)
+    rules = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.S)
+
+    assert "$border-blurred" not in rules
 
 
 async def test_the_msgs_column_shows_the_cached_turn_count_and_marks_a_stale_one(
@@ -2965,8 +3389,11 @@ async def test_c_deep_scans_the_session_under_the_cursor_and_opens_no_screen(
         await pilot.pause()
         where = type(app.screen), type(app.focused)
         cell = str(table.get_cell(a1, "msgs"))
-        details = app.query_one(DetailsPane).text
         shown = toasts(app)
+        # The small pane never shows a figure. The full view does.
+        await pilot.press("enter")
+        await pilot.pause()
+        details = app.screen.query_one(Lines).text
 
     assert key == "Scan"
     assert blank == ""
@@ -2994,8 +3421,10 @@ async def test_c_takes_figures_already_in_the_cache_and_reads_no_transcript_agai
         await app.workers.wait_for_complete()
         await pilot.pause()
         cell = str(app.query_one(SessionsPane).get_cell(a1, "msgs"))
-        details = app.query_one(DetailsPane).text
         shown = toasts(app)
+        await pilot.press("enter")
+        await pilot.pause()
+        details = app.screen.query_one(Lines).text
 
     assert seen == []
     assert cell == "1"

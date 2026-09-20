@@ -64,6 +64,17 @@ def key_text(name_of: Callable[[Binding], str]) -> str:
     return "\n".join(lines)
 
 
+class CloseKey(Static):
+    """The X that closes the About box."""
+
+    def __init__(self, hint: str) -> None:
+        super().__init__(hint, id="about-close", markup=False)
+
+    def on_click(self) -> None:
+        """A click closes the About box."""
+        self.screen.dismiss(None)
+
+
 class AboutScreen(ModalScreen[None]):
     """About popup"""
 
@@ -73,6 +84,12 @@ class AboutScreen(ModalScreen[None]):
         Binding("q", "close", "Close", show=False),
         Binding("question_mark", "close", "Close", show=False),
     ]
+
+    # The 'close' mark
+    CLOSE_HINT = "[x]"
+
+    # How far from the right edge the mark starts
+    MARK_ROOM = len(CLOSE_HINT) + 2
 
     def __init__(self) -> None:
         super().__init__()
@@ -86,7 +103,22 @@ class AboutScreen(ModalScreen[None]):
             # The app says how a key reads, so the box and the footer agree.
             keys = key_text(self.app.get_key_display)
             yield Static(keys, id="about-keys", markup=False)
+        yield CloseKey(self.CLOSE_HINT)
         yield Footer()
+
+    def on_mount(self) -> None:
+        """The box has no size yet."""
+        self.call_after_refresh(self._place_mark)
+
+    def on_resize(self) -> None:
+        """A new window size moves the box."""
+        self.call_after_refresh(self._place_mark)
+
+    def _place_mark(self) -> None:
+        """Put the mark on the top/right part of the frame."""
+        frame = self.query_one("#about").region
+        mark = self.query_one(CloseKey)
+        mark.offset = (frame.right - self.MARK_ROOM, frame.y)
 
     def action_close(self) -> None:
         """The box goes, and the pane that opened it has the focus again."""

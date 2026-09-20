@@ -263,6 +263,23 @@ class Formatter:
         lines += self.describe_figures(details.figures)
         return lines
 
+    def describe_short(self, details: SessionDetails) -> list[tuple[str, str]]:
+        """One session in six lines, for the pane under the sessions table.
+
+        Which session this is, and how big and how fresh it is. Where the
+        files sit, what each part holds and what a deep scan counted belong to
+        the full view, which ``describe`` gives.
+        """
+        session = details.session
+        return [
+            ("Id", session.id),
+            ("Title", session.title),
+            ("Project", session.project_path),
+            ("Git branch", session.git_branch or "-"),
+            ("Last used", self.details_timestamp(session.last_used)),
+            ("Total", self.size(session.size)),
+        ]
+
     def stale(self, text: str, figures: Figures) -> str:
         """``text`` with the stale mark in front when the figures are stale: ``*12``.
 
@@ -360,7 +377,6 @@ class Formatter:
             ("Title", entry.title),
             ("Project", entry.project_path),
             ("Trashed", self.details_timestamp(entry.trashed_at)),
-            ("Reason", entry.reason or "-"),
             ("Size", self.size(entry.size)),
             ("Entry", str(entry.path)),
         ]
@@ -368,3 +384,13 @@ class Formatter:
             label = part.kind.capitalize()
             lines.append((label, f"{self.size(part.size)}  {part.original}"))
         return lines
+
+    def describe_entry_short(self, entry: TrashEntry) -> list[tuple[str, str]]:
+        """Basic details about trashed entry"""
+        return [
+            ("Session", entry.session_id),
+            ("Title", entry.title),
+            ("Project", entry.project_path),
+            ("Trashed", self.details_timestamp(entry.trashed_at)),
+            ("Size", self.size(entry.size)),
+        ]
