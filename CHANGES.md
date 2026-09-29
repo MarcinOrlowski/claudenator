@@ -5,6 +5,7 @@
 * App now remembers last selected project and session from last run.
 * The Trash list can now be ordered by any column, the way the sessions list is.
 * Details now show every size in exact bytes too, next to the short form.
+* List title now shows when the display filter is applied.
 
 ## v1.1.0 (2026-09-20)
 

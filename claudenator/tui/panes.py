@@ -421,9 +421,12 @@ class Lister(OptionList):
             index = 0
         self.highlighted = index
 
-    def _refill(self, first: str, ids: list[str]) -> None:
-        """Put the lines back: the 'all' line, then one per id. The title counts them."""
-        self.border_title = self.fmt.counted(self._title, len(ids))
+    def _refill(self, first: str, ids: list[str], of: int | None = None) -> None:
+        """Put the lines back: the 'all' line, then one per id. The title counts them.
+
+        ``of`` counts the whole list while a filter narrows it.
+        """
+        self.border_title = self.fmt.counted(self._title, len(ids), of=of)
         wanted = self._selected
         index = self.highlighted or 0
         self.clear_options()
@@ -492,6 +495,7 @@ class ProjectsPane(Filterable, Lister):
         self._refill(
             ALL_PROJECTS,
             [project.path for project in self._projects if self._matches(project.path)],
+            of=len(self._projects) if self.filter_text else None,
         )
 
 
@@ -640,6 +644,10 @@ class Table(Filterable, DataTable):
         """Put every row back, for a setting that changes how a cell reads."""
         self._rebuild()
 
+    def _held(self) -> Sequence[Session | TrashEntry]:
+        """Every row the pane holds, the filter aside."""
+        raise NotImplementedError
+
     def _rows(self) -> Sequence[Session | TrashEntry]:
         """The rows on view: the filter in effect, in the order in effect."""
         raise NotImplementedError
@@ -649,9 +657,13 @@ class Table(Filterable, DataTable):
         raise NotImplementedError
 
     def _retitle(self) -> None:
-        """The title counts the rows on view and sums their size."""
+        """The title counts the rows on view and sums their size.
+
+        While a filter narrows the rows, it counts and sums every row held too.
+        """
         sizes = [row.size for row in self._rows()]
-        self.border_title = self.fmt.summary(self._title, self.NOUN, sizes)
+        held = [row.size for row in self._held()] if self.filter_text else None
+        self.border_title = self.fmt.summary(self._title, self.NOUN, sizes, of=held)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Dim the keys that need a row while there is none to act on."""
@@ -857,6 +869,10 @@ class SessionsPane(Table):
         """The keys of the columns on view. Project shows on 'All projects' alone."""
         return [key for key in COLUMNS if key != "project" or self._with_project]
 
+    def _held(self) -> list[Session]:
+        """Every session the project choice lets through."""
+        return self._sessions
+
     def _rows(self) -> list[Session]:
         """The sessions on view: the filter in effect, in the order in effect."""
         kept = [s for s in self._sessions if self._matches(s.title)]
@@ -1044,6 +1060,10 @@ class EntriesPane(Table):
         """Refit the flexible columns when the room changes."""
         if self._entries and self._fit() != self._widths:
             self._rebuild()
+
+    def _held(self) -> list[TrashEntry]:
+        """Every entry the day choice lets through."""
+        return self._entries
 
     def _rows(self) -> list[TrashEntry]:
         """The entries on view: the filter in effect, in the order in effect."""
