@@ -570,6 +570,35 @@ def test_a_summary_title_counts_the_things_and_sums_their_size() -> None:
     )
 
 
+def test_a_counted_title_counts_the_whole_list_while_a_filter_narrows_it() -> None:
+    """With the whole list named, the title gives both counts, even when all match."""
+    counted = Formatter(Settings()).counted
+
+    assert counted("Projects", 2, of=12) == "Projects (2 of 12)"
+    assert counted("Projects", 12, of=12) == "Projects (12 of 12)"
+    assert counted("Projects", 0, of=12) == "Projects (0 of 12)"
+    assert counted("Projects", 0, of=0) == "Projects (empty)"
+
+
+def test_a_summary_title_counts_and_sums_the_whole_list_while_a_filter_narrows_it() -> (
+    None
+):
+    """With the whole list named, the title gives both counts and both sizes."""
+    summary = Formatter(Settings()).summary
+
+    assert (
+        summary("Trash", "entry", [1000], of=[1000, 2048])
+        == "Trash (1 of 2 entries, 1000B of 3.0K total)"
+    )
+    assert (
+        summary("Trash", "entry", [1000], of=[1000])
+        == "Trash (1 of 1 entry, 1000B of 1000B total)"
+    )
+    # Nothing matches.
+    assert summary("Trash", "entry", [], of=[1000, 2048]) == "Trash (0 of 2 entries)"
+    assert summary("Trash", "entry", [], of=[]) == "Trash (empty)"
+
+
 def test_trash_key_carries_the_count_and_nothing_when_the_trash_is_empty() -> None:
     """The Trash key carries the count. An empty Trash puts nothing after the word."""
     key = Formatter(Settings()).trash_key

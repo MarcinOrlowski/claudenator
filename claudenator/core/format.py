@@ -354,16 +354,38 @@ class Formatter:
         """What a run of deep scans did: ``2 scanned, 1 already fresh, 0 failed``."""
         return f"{read} scanned, {kept} already fresh, {failed} failed"
 
-    def counted(self, name: str, count: int) -> str:
-        """A pane title with the count of what it shows: ``Projects (3)``, or ``(empty)``."""
+    def counted(self, name: str, count: int, of: int | None = None) -> str:
+        """A pane title with the count of what it shows: ``Projects (3)``, or ``(empty)``.
+
+        While a filter narrows the list, ``of`` counts the whole of it:
+        ``Projects (2 of 12)``.
+        """
+        if of:
+            return f"{name} ({count} of {of})"
         return f"{name} ({count})" if count else f"{name} (empty)"
 
-    def summary(self, name: str, noun: str, sizes: Sequence[int]) -> str:
+    def summary(
+        self,
+        name: str,
+        noun: str,
+        sizes: Sequence[int],
+        of: Sequence[int] | None = None,
+    ) -> str:
         """A pane title with a count and a total: ``Trash (3 entries, 12.3M total)``.
 
         ``noun`` names one of the things, ``session`` or ``entry``. Its plural
         follows English. One size per thing on view; none gives ``(empty)``.
+        While a filter narrows the list, ``of`` holds one size per thing in the
+        whole of it: ``Trash (2 of 9 entries, 12.3M of 48.0M total)``, and
+        ``Trash (0 of 9 entries)`` when nothing matches.
         """
+        if of:
+            word = noun if len(of) == 1 else plural(noun)
+            counts = f"{len(sizes)} of {len(of)} {word}"
+            if not sizes:
+                return f"{name} ({counts})"
+            total = f"{self.size(sum(sizes))} of {self.size(sum(of))} total"
+            return f"{name} ({counts}, {total})"
         if not sizes:
             return f"{name} (empty)"
         count = len(sizes)

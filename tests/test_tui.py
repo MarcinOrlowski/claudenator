@@ -1926,6 +1926,104 @@ async def test_the_trash_opens_in_the_order_the_settings_name(
     assert changed == ([alpha, zed, mid], ("trashed_at", False))
 
 
+async def test_a_filter_in_effect_shows_in_the_title_of_the_projects_and_the_sessions(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """While a filter narrows a list, its title counts what is on view and the whole."""
+    a1, a2, b1 = three_sessions(fake)
+    size = {s.id: s.size for s in SessionStore(settings).list_sessions()}
+    fmt = Formatter(settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        projects = app.screen.query_one(ProjectsPane)
+        seen = [str(table.border_title)]
+        await pilot.press("slash", "a", "enter")
+        await pilot.pause()
+        seen.append(str(table.border_title))
+        await pilot.press("escape")
+        await pilot.pause()
+        seen.append(str(table.border_title))
+        await pilot.press("shift+tab")
+        await pilot.pause()
+        seen.append(str(projects.border_title))
+        for typed in ("b", "p"):
+            await pilot.press("slash", typed, "enter")
+            await pilot.pause()
+            seen.append(str(projects.border_title))
+        await pilot.press("escape")
+        await pilot.pause()
+        seen.append(str(projects.border_title))
+
+    every = fmt.size(size[a1] + size[a2] + size[b1])
+    shown = fmt.size(size[a1] + size[a2])
+    assert seen == [
+        f"Sessions (3 sessions, {every} total)",
+        f"Sessions (2 of 3 sessions, {shown} of {every} total)",
+        f"Sessions (3 sessions, {every} total)",
+        "Projects (2)",
+        "Projects (1 of 2)",
+        "Projects (2 of 2)",
+        "Projects (2)",
+    ]
+
+
+async def test_a_filter_in_effect_shows_in_the_title_of_the_trash(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash title counts the whole Trash too, and drops the size when none match."""
+    e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
+    fmt = Formatter(settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        seen = [str(table.border_title)]
+        for typed in ("a", "zzz"):
+            await pilot.press("slash", *typed, "enter")
+            await pilot.pause()
+            seen.append(str(table.border_title))
+            await pilot.press("escape")
+            await pilot.pause()
+        seen.append(str(table.border_title))
+
+    every = fmt.size(e_a1.size + e_a2.size + e_b1.size)
+    shown = fmt.size(e_a1.size + e_a2.size)
+    assert seen == [
+        f"Trash (3 entries, {every} total)",
+        f"Trash (2 of 3 entries, {shown} of {every} total)",
+        "Trash (0 of 3 entries)",
+        f"Trash (3 entries, {every} total)",
+    ]
+
+
+async def test_a_long_filter_title_keeps_the_frame_whole_in_a_narrow_window(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """In the narrowest window the longer title is cut, and both corners stay."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=(settings.min_width, settings.min_height)) as pilot:
+        await pilot.pause()
+        await pilot.press("slash", "a", "enter")
+        await pilot.pause()
+        title = str(app.screen.query_one(SessionsPane).border_title)
+        strips = app.screen._compositor.render_strips()
+        tops = []
+        for kind in (ProjectsPane, SessionsPane):
+            box = app.screen.query_one(kind).region
+            left, right = box.x, box.right
+            tops.append(strips[box.y].text[left:right])
+
+    assert title.startswith("Sessions (2 of 3 sessions, ")
+    for top in tops:
+        assert top.startswith("╭") and top.endswith("╮"), top
+        assert len(top) == settings.min_width
+
+
 async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -2895,13 +2993,15 @@ async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
         "Projects (2)",
         f"Sessions (1 session, {fmt.size(size[b1])} total)",
     )
+    in_a = fmt.size(size[a1] + size[a2])
     assert projects_narrowed == (
-        "Projects (1)",
-        f"Sessions (2 sessions, {fmt.size(size[a1] + size[a2])} total)",
+        "Projects (1 of 2)",
+        f"Sessions (2 sessions, {in_a} total)",
     )
+    # The whole list is what the project choice lets through, not every session.
     assert sessions_narrowed == (
-        "Projects (1)",
-        f"Sessions (1 session, {fmt.size(size[a1])} total)",
+        "Projects (1 of 2)",
+        f"Sessions (1 of 2 sessions, {fmt.size(size[a1])} of {in_a} total)",
     )
 
 
