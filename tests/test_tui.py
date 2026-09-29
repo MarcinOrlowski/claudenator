@@ -921,7 +921,9 @@ async def test_the_details_pane_shows_the_vital_lines_of_the_session_under_the_c
     assert re.search(r"^Git branch: +dev$", text, re.M)
     used = re.escape(fmt.details_timestamp(session.last_used))
     assert re.search(rf"^Last used: +{used}$", text, re.M)
-    assert re.search(rf"^Total: +{fmt.size(session.size)}$", text, re.M)
+    assert re.search(
+        rf"^Total: +{re.escape(fmt.details_size(session.size))}$", text, re.M
+    )
     hidden = ("Folder", "Transcript", "Sidecar", "Created", "Claude Code", "Live")
     assert not [label for label in hidden if f"{label}:" in text]
 
@@ -975,7 +977,8 @@ async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     assert "Fork of:" not in pane
     assert f"Fork of:     {parent}" in text
     assert (
-        f"Inherited:   {fmt.size(details.inherited_bytes)} came from the parent" in text
+        f"Inherited:   {fmt.details_size(details.inherited_bytes)} came from the parent"
+        in text
     )
 
 
@@ -2425,14 +2428,16 @@ async def test_the_entry_pane_shows_the_vital_lines_of_the_entry_under_the_curso
     assert re.search(r"^Project: +/p/x$", first, re.M)
     stamp = re.escape(fmt.details_timestamp(later))
     assert re.search(rf"^Trashed: +{stamp}$", first, re.M)
-    assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
+    assert re.search(
+        rf"^Size: +{re.escape(fmt.details_size(entry.size))}$", first, re.M
+    )
     hidden = ("Entry", "Transcript", "Sidecar", "Session-env", "Todo")
     assert not [label for label in hidden if f"{label}:" in first]
     # The full view keeps every line the pane leaves out.
     assert re.search(rf"^Entry: +\S*/{re.escape(entry.id)}$", full, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
         name = re.escape(parts[kind].name)
-        line = rf"^{kind.capitalize()}: +(\S+  )?\S*/{name}$"
+        line = rf"^{kind.capitalize()}: +(\S+ \([\d,]+ bytes?\)  )?\S*/{name}$"
         assert re.search(line, full, re.M), kind
     assert re.search(rf"^Session: +{other}$", second, re.M)
     assert sid not in second
