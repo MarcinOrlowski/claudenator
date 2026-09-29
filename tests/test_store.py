@@ -16,12 +16,15 @@ from __future__ import annotations
 import os
 import tracemalloc
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
+from claudenator.core.config import TRASH_SORT_COLUMNS
 from claudenator.core.errors import AmbiguousSessionId, ScanFailed, SessionNotFound
+from claudenator.core.model import Part, TrashEntry
 from claudenator.core.settings import Settings
-from claudenator.core.store import SORT_COLUMNS, SessionStore, sort_key
+from claudenator.core.store import SORT_COLUMNS, SessionStore, entry_sort_key, sort_key
 from tests.fabricate import (
     FakeClaude,
     answer_records,
@@ -464,6 +467,42 @@ def test_sort_order_comes_from_the_settings(
     titles = [session.title for session in SessionStore(settings).list_sessions()]
 
     assert titles == ["alpha", "beta"]
+
+
+def trash_entry(name: str, title: str, project: str, size: int, day: int) -> TrashEntry:
+    """A Trash entry of one part, trashed at noon on ``day`` of September 2026."""
+    part = Part("transcript", Path(f"/c/{name}.jsonl"), Path("claude/x"), False, size)
+    return TrashEntry(
+        id=name,
+        path=Path(f"/t/{name}"),
+        session_id=name,
+        trashed_at=datetime(2026, 9, day, 12, tzinfo=timezone.utc),
+        title=title,
+        project_path=project,
+        parts=(part,),
+    )
+
+
+def test_any_column_can_sort_the_trash() -> None:
+    """Any Trash column can sort."""
+    entries = [
+        trash_entry("mid", "mid", "/p/c", 500, 14),
+        trash_entry("zed", "Zed", "/p/a", 900, 13),
+        trash_entry("alpha", "alpha", "/p/B", 100, 12),
+    ]
+
+    ordered = {
+        column: [e.id for e in sorted(entries, key=entry_sort_key(column))]
+        for column in (*TRASH_SORT_COLUMNS, "nonsense")
+    }
+
+    assert ordered == {
+        "title": ["alpha", "mid", "zed"],
+        "trashed_at": ["alpha", "zed", "mid"],
+        "size": ["alpha", "mid", "zed"],
+        "project": ["zed", "alpha", "mid"],
+        "nonsense": ["alpha", "zed", "mid"],
+    }
 
 
 def test_any_column_can_sort(fake: FakeClaude, settings: Settings) -> None:

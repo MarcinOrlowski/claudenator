@@ -93,6 +93,19 @@ def sort_key(
     return lambda session: session.last_used
 
 
+def entry_sort_key(column: str) -> Callable[[TrashEntry], Any]:
+    """The key that orders Trash entries by ``column``. An unknown column orders by
+    when the entry went in. A text compares with case left out.
+    """
+    if column == "title":
+        return lambda entry: entry.title.casefold()
+    if column == "size":
+        return lambda entry: entry.size
+    if column == "project":
+        return lambda entry: entry.project_path.casefold()
+    return lambda entry: entry.trashed_at
+
+
 def projects_of(sessions: list[Session]) -> list[Project]:
     """The projects that own these sessions, grouped by real path, sorted by path."""
     groups: dict[str, list[Session]] = {}
