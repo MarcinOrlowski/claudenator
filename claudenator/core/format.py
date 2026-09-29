@@ -148,6 +148,10 @@ class Formatter:
             value /= 1024
         return f"{int(value)}B"
 
+    def details_size(self, size: int) -> str:
+        """Byte size for the details, which have room for both: ``2.1K (2,148 bytes)``."""
+        return f"{self.size(size)} ({self.count(size)} {plural_of('byte', size)})"
+
     def path(self, path: str, width: int) -> str:
         """A path in ``width`` columns. One too long is cut in the middle, at slashes.
 
@@ -234,7 +238,7 @@ class Formatter:
             ("Claude Code", session.version or "-"),
             (
                 "Transcript",
-                f"{self.size(session.transcript_size)}  {session.transcript_path.name}",
+                f"{self.details_size(session.transcript_size)}  {session.transcript_path.name}",
             ),
         ]
         if session.sidecar_path is not None:
@@ -243,19 +247,19 @@ class Formatter:
             lines.append(
                 (
                     "Sidecar",
-                    f"{self.size(session.sidecar_size)}  {session.sidecar_path.name}"
+                    f"{self.details_size(session.sidecar_size)}  {session.sidecar_path.name}"
                     f"  ({agents} {noun})",
                 )
             )
         else:
             lines.append(("Sidecar", "none"))
-        lines.append(("Total", self.size(session.size)))
+        lines.append(("Total", self.details_size(session.size)))
         if session.is_fork:
             lines.append(("Fork of", session.fork_parent or "-"))
             lines.append(
                 (
                     "Inherited",
-                    f"{self.size(details.inherited_bytes)} came from the parent",
+                    f"{self.details_size(details.inherited_bytes)} came from the parent",
                 )
             )
         lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
@@ -277,7 +281,7 @@ class Formatter:
             ("Project", session.project_path),
             ("Git branch", session.git_branch or "-"),
             ("Last used", self.details_timestamp(session.last_used)),
-            ("Total", self.size(session.size)),
+            ("Total", self.details_size(session.size)),
         ]
 
     def stale(self, text: str, figures: Figures) -> str:
@@ -377,12 +381,12 @@ class Formatter:
             ("Title", entry.title),
             ("Project", entry.project_path),
             ("Trashed", self.details_timestamp(entry.trashed_at)),
-            ("Size", self.size(entry.size)),
+            ("Size", self.details_size(entry.size)),
             ("Entry", str(entry.path)),
         ]
         for part in entry.parts:
             label = part.kind.capitalize()
-            lines.append((label, f"{self.size(part.size)}  {part.original}"))
+            lines.append((label, f"{self.details_size(part.size)}  {part.original}"))
         return lines
 
     def describe_entry_short(self, entry: TrashEntry) -> list[tuple[str, str]]:
@@ -392,5 +396,5 @@ class Formatter:
             ("Title", entry.title),
             ("Project", entry.project_path),
             ("Trashed", self.details_timestamp(entry.trashed_at)),
-            ("Size", self.size(entry.size)),
+            ("Size", self.details_size(entry.size)),
         ]

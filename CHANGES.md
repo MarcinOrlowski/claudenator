@@ -3,6 +3,7 @@
 ## v1.2.0 (TBD)
 
 * App now remembers last selected project and session from last run.
+* Details now show every size in exact bytes too, next to the short form.
 
 ## v1.1.0 (2026-09-20)
 

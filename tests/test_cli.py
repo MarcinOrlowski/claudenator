@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from claudenator.cli.main import main
+from claudenator.core.format import Formatter
 from claudenator.core.settings import Settings
 from claudenator.core.store import SessionStore
 from tests.fabricate import (
@@ -238,6 +239,23 @@ def test_info_by_prefix(
     assert "(3 subagent transcripts)" in out
     assert "Fork of:" not in out
     assert "Damaged:     no" in out
+
+
+def test_info_shows_the_exact_bytes_and_list_keeps_the_short_form(
+    fake: FakeClaude, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Info has the room for both forms of a size."""
+    sid = new_id()
+    fake.transcript(PROJECT, sid)
+    size = SessionStore(settings).list_sessions()[0].size
+    fmt = Formatter(settings)
+
+    _code, info, _err = run(capsys, settings, "info", sid)
+    _code, listed, _err = run(capsys, settings, "list")
+
+    assert f"Total:       {fmt.details_size(size)}\n" in info
+    assert f"{fmt.size(size)} on disk" in listed
+    assert "bytes" not in listed
 
 
 def test_info_of_a_fork_shows_the_inherited_bytes(
