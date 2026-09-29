@@ -472,8 +472,12 @@ class TrashScreen(PaneScreen[TrashVisit]):
         yield KeyBar()
 
     def on_mount(self) -> None:
-        """Shape the layout, fill, and focus the entries"""
+        """Shape the layout and order the table from the settings, fill and focus."""
+        settings = self.store.settings
         self._fit_window()
+        self.query_one(EntriesPane).sort_by(
+            settings.trash_sort_column, settings.trash_sort_descending
+        )
         self.load()
         self.query_one(EntriesPane).focus()
 
@@ -489,8 +493,11 @@ class TrashScreen(PaneScreen[TrashVisit]):
         self.load()
 
     def refresh_settings(self) -> None:
-        """The entry on view takes the time form the settings name."""
-        self.query_one(EntryPane).show(self.query_one(EntriesPane).selected)
+        """The table takes the order, and the entry on view the time form, they name."""
+        settings = self.store.settings
+        entries = self.query_one(EntriesPane)
+        entries.sort_by(settings.trash_sort_column, settings.trash_sort_descending)
+        self.query_one(EntryPane).show(entries.selected)
         super().refresh_settings()
 
     def action_sessions_mode(self) -> None:

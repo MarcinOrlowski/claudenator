@@ -61,6 +61,9 @@ class Settings:
     remember_selection: bool = True
     sort_column: str = "last_used"
     sort_descending: bool = True
+    # The same, for the Trash table.
+    trash_sort_column: str = "trashed_at"
+    trash_sort_descending: bool = True
     # The projects pane takes this share of the width, side by side with the
     # other panes, or this share of the height when they go in one column.
     projects_pane_share: float = 0.25

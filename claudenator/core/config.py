@@ -39,6 +39,9 @@ THEME = "theme"
 # The columns the sessions table can sort by
 SORT_COLUMNS = ("state", "title", "last_used", "size", "msgs", "project")
 
+# The columns the Trash table can sort by
+TRASH_SORT_COLUMNS = ("title", "trashed_at", "size", "project")
+
 # Which pane holds the focus at start.
 START_PANES = ("sessions", "projects")
 
@@ -88,6 +91,19 @@ OPTIONS: tuple[Option, ...] = (
         LISTS,
         "Sort descending",
         "Biggest and newest first.",
+    ),
+    Option(
+        "trash_sort_column",
+        LISTS,
+        "Trash sort column",
+        "The column that orders the Trash when it opens.",
+        choices=TRASH_SORT_COLUMNS,
+    ),
+    Option(
+        "trash_sort_descending",
+        LISTS,
+        "Trash sort descending",
+        "Biggest and newest first, in the Trash.",
     ),
     Option(
         "list_time_format",
