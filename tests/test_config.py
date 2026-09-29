@@ -73,6 +73,22 @@ def test_every_option_belongs_to_one_section() -> None:
     assert groups() == ["General", "Lists", "Times", "Trash"]
 
 
+def test_the_trash_order_sits_beside_the_order_of_the_sessions() -> None:
+    """The Lists section holds both orders: the sessions, then the Trash."""
+    names = [option.name for option in options_in("Lists")]
+
+    assert names == [
+        "sort_column",
+        "sort_descending",
+        "trash_sort_column",
+        "trash_sort_descending",
+    ]
+    assert (default_of("trash_sort_column"), default_of("trash_sort_descending")) == (
+        "trashed_at",
+        True,
+    )
+
+
 def test_a_file_that_goes_out_comes_back_the_same(settings: Settings) -> None:
     """A file that goes out comes back the same."""
     settings.theme = "gruvbox"

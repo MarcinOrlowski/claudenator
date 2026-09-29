@@ -34,7 +34,7 @@ from textual.widgets.option_list import Option, OptionDoesNotExist
 from claudenator import __title__, __version__
 from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, Project, Session, SessionDetails, TrashEntry
-from claudenator.core.store import sort_key
+from claudenator.core.store import entry_sort_key, sort_key
 
 # The keys every pane uses. The left/right arrows walk the panes too
 SHARED_BINDINGS = [
@@ -199,7 +199,7 @@ ENTRY_COLUMNS = {
 }
 
 # A number or a time column sorts biggest value first when its column is chosen.
-BIGGEST_FIRST = {"state", "last_used", "size", "msgs"}
+BIGGEST_FIRST = {"state", "last_used", "trashed_at", "size", "msgs"}
 
 # Sorting order mark
 SORT_MARK = {True: " ▼", False: " ▲"}
@@ -409,9 +409,24 @@ class Lister(OptionList):
                     index, Content(self._label(option.id))
                 )
 
-    def _refill(self, first: str, ids: list[str]) -> None:
-        """Put the lines back: the 'all' line, then one per id. The title counts them."""
-        self.border_title = self.fmt.counted(self._title, len(ids))
+    def preselect(self, key: str | None) -> None:
+        """Ask for the highlight on this line"""
+        self._selected = key
+        if not self.option_count:
+            return
+        try:
+            index = 0 if key is None else self.get_option_index(key)
+        except OptionDoesNotExist:
+            self._selected = None
+            index = 0
+        self.highlighted = index
+
+    def _refill(self, first: str, ids: list[str], of: int | None = None) -> None:
+        """Put the lines back: the 'all' line, then one per id. The title counts them.
+
+        ``of`` counts the whole list while a filter narrows it.
+        """
+        self.border_title = self.fmt.counted(self._title, len(ids), of=of)
         wanted = self._selected
         index = self.highlighted or 0
         self.clear_options()
@@ -480,6 +495,7 @@ class ProjectsPane(Filterable, Lister):
         self._refill(
             ALL_PROJECTS,
             [project.path for project in self._projects if self._matches(project.path)],
+            of=len(self._projects) if self.filter_text else None,
         )
 
 
@@ -528,6 +544,8 @@ class Table(Filterable, DataTable):
     ROW_ACTIONS: frozenset[str] = frozenset()
     # What one row is, for the title: ``session`` or ``entry``.
     NOUN = "row"
+    # Every column, key to header, left to right.
+    HEADERS: dict[str, str] = {}
 
     class Chosen(Message):
         """The cursor moved to a row, or the table went empty (``None``)."""
@@ -536,18 +554,84 @@ class Table(Filterable, DataTable):
             super().__init__()
             self.key = key
 
-    def __init__(self, id: str, title: str, fmt: Formatter) -> None:
+    def __init__(self, id: str, title: str, fmt: Formatter, sort_column: str) -> None:
         super().__init__(id=id, cursor_type="row")
         self.border_title = title
         self.fmt = fmt
         self._title = title
         self._selected: str | None = None
         self._widths: tuple[int, int] = (0, 0)
+        self._sort_column = sort_column
+        self._sort_descending = True
 
     @property
     def selected_id(self) -> str | None:
         """The key of the row under the cursor, or None when there is none."""
         return self._selected
+
+    @property
+    def sorting(self) -> tuple[str, bool]:
+        """The column that orders the rows, and whether it is biggest first."""
+        return self._sort_column, self._sort_descending
+
+    def list_keys(self) -> list[tuple[str, str]]:
+        """A table takes any of its columns as its order, so its frame says how."""
+        return [SORT_KEY, REVERSE_KEY]
+
+    def sort_by(self, column: str, descending: bool | None = None) -> None:
+        """Order the rows by one column.
+
+        With ``descending`` left out, a number or a time goes biggest first
+        and a text goes alpha order. The cursor stays on its row.
+        """
+        if descending is None:
+            descending = column in BIGGEST_FIRST
+        self._sort_column = column
+        self._sort_descending = descending
+        self.reorder()
+
+    def action_sort_next(self) -> None:
+        """The 'o' key: order by the next column along."""
+        shown = self._shown_columns()
+        try:
+            index = shown.index(self._sort_column)
+        except ValueError:
+            index = -1
+        self.sort_by(shown[(index + 1) % len(shown)])
+
+    def action_sort_reverse(self) -> None:
+        """The 'O' key: the same column, the other way round."""
+        self.sort_by(self._sort_column, not self._sort_descending)
+
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        """A click on a header orders by that column. A second click turns it round."""
+        event.stop()
+        column = str(event.column_key.value)
+        if column == self._sort_column:
+            self.action_sort_reverse()
+        else:
+            self.sort_by(column)
+
+    def reorder(self) -> None:
+        """Put the rows back in the order in effect. An empty table has none to move."""
+        raise NotImplementedError
+
+    def _shown_columns(self) -> list[str]:
+        """The keys of the columns on view, left to right."""
+        return list(self.HEADERS)
+
+    def _labels(self) -> dict[str, str]:
+        """The header of every column on view, with the sort mark on one of them."""
+        labels = {key: self.HEADERS[key] for key in self._shown_columns()}
+        if self._sort_column in labels:
+            labels[self._sort_column] += SORT_MARK[self._sort_descending]
+        return labels
+
+    def preselect(self, key: str | None) -> None:
+        """Ask for the cursor on this row, at once or at the next fill."""
+        self._selected = key
+        if self.row_count:
+            self._place_cursor(self._place())
 
     def drop(self, key: str) -> None:
         """Take one row out of the table in place."""
@@ -560,6 +644,10 @@ class Table(Filterable, DataTable):
         """Put every row back, for a setting that changes how a cell reads."""
         self._rebuild()
 
+    def _held(self) -> Sequence[Session | TrashEntry]:
+        """Every row the pane holds, the filter aside."""
+        raise NotImplementedError
+
     def _rows(self) -> Sequence[Session | TrashEntry]:
         """The rows on view: the filter in effect, in the order in effect."""
         raise NotImplementedError
@@ -569,9 +657,13 @@ class Table(Filterable, DataTable):
         raise NotImplementedError
 
     def _retitle(self) -> None:
-        """The title counts the rows on view and sums their size."""
+        """The title counts the rows on view and sums their size.
+
+        While a filter narrows the rows, it counts and sums every row held too.
+        """
         sizes = [row.size for row in self._rows()]
-        self.border_title = self.fmt.summary(self._title, self.NOUN, sizes)
+        held = [row.size for row in self._held()] if self.filter_text else None
+        self.border_title = self.fmt.summary(self._title, self.NOUN, sizes, of=held)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         """Dim the keys that need a row while there is none to act on."""
@@ -629,11 +721,8 @@ class SessionsPane(Table):
     ]
     ROW_ACTIONS = frozenset({"trash", "open", "scan", "scan_all"})
     NOUN = "session"
+    HEADERS = COLUMNS
     COMPONENT_CLASSES = STATE_CLASSES
-
-    def list_keys(self) -> list[tuple[str, str]]:
-        """This is the one list the user can order, so its frame says how."""
-        return [SORT_KEY, REVERSE_KEY]
 
     class Chosen(Table.Chosen):
         """The cursor moved to a session, or the table went empty (``None``)."""
@@ -671,13 +760,11 @@ class SessionsPane(Table):
             self.sessions = sessions
 
     def __init__(self, fmt: Formatter) -> None:
-        super().__init__("sessions", "Sessions", fmt)
+        super().__init__("sessions", "Sessions", fmt, sort_column="last_used")
         self._sessions: list[Session] = []
         self._by_id: dict[str, Session] = {}
         self._figures: dict[str, Figures] = {}
         self._with_project = False
-        self._sort_column = "last_used"
-        self._sort_descending = True
 
     @property
     def selected(self) -> Session | None:
@@ -685,11 +772,6 @@ class SessionsPane(Table):
         if self._selected is None:
             return None
         return self._by_id.get(self._selected)
-
-    @property
-    def sorting(self) -> tuple[str, bool]:
-        """The column that orders the rows, and whether it is biggest first."""
-        return self._sort_column, self._sort_descending
 
     @property
     def listed(self) -> list[Session]:
@@ -778,56 +860,18 @@ class SessionsPane(Table):
         if sessions:
             self.post_message(self.ScanAllWanted(sessions))
 
-    def sort_by(self, column: str, descending: bool | None = None) -> None:
-        """Order the rows by one column.
-
-        With ``descending`` left out, a number or a time goes biggest first
-        and a text goes alpha order. The cursor stays on its session.
-        """
-        if descending is None:
-            descending = column in BIGGEST_FIRST
-        self._sort_column = column
-        self._sort_descending = descending
-        if self._sessions:
-            self._rebuild()
-
-    def action_sort_next(self) -> None:
-        """The 'o' key: order by the next column along."""
-        shown = self._shown_columns()
-        try:
-            index = shown.index(self._sort_column)
-        except ValueError:
-            index = -1
-        self.sort_by(shown[(index + 1) % len(shown)])
-
-    def action_sort_reverse(self) -> None:
-        """The 'O' key: the same column, the other way round."""
-        self.sort_by(self._sort_column, not self._sort_descending)
-
-    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
-        """A click on a header orders by that column. A second click turns it round."""
-        event.stop()
-        column = str(event.column_key.value)
-        if column == self._sort_column:
-            self.action_sort_reverse()
-        else:
-            self.sort_by(column)
-
     def on_resize(self) -> None:
         """Refit the flexible columns when the room changes."""
         if self._sessions and self._fit() != self._widths:
             self._rebuild()
 
     def _shown_columns(self) -> list[str]:
-        """The keys of the columns on view, left to right."""
+        """The keys of the columns on view. Project shows on 'All projects' alone."""
         return [key for key in COLUMNS if key != "project" or self._with_project]
 
-    def _labels(self) -> dict[str, str]:
-        """The header of every column on view, with the sort mark on one of them."""
-        labels = {key: COLUMNS[key] for key in self._shown_columns()}
-        if self._sort_column in labels:
-            labels[self._sort_column] += SORT_MARK[self._sort_descending]
-        return labels
+    def _held(self) -> list[Session]:
+        """Every session the project choice lets through."""
+        return self._sessions
 
     def _rows(self) -> list[Session]:
         """The sessions on view: the filter in effect, in the order in effect."""
@@ -924,11 +968,18 @@ class SessionsPane(Table):
 
 
 class EntriesPane(Table):
-    """The upper right pane in Trash mode: the entries of one day, newest first."""
+    """The upper right pane in Trash mode: the entries of one day."""
 
-    BINDINGS = [*SHARED_BINDINGS, TO_SESSIONS, *FILTER_BINDINGS, *ENTRIES_BINDINGS]
+    BINDINGS = [
+        *SHARED_BINDINGS,
+        TO_SESSIONS,
+        *FILTER_BINDINGS,
+        *ENTRIES_BINDINGS,
+        *SORT_BINDINGS,
+    ]
     ROW_ACTIONS = frozenset({"restore", "purge", "open"})
     NOUN = "entry"
+    HEADERS = ENTRY_COLUMNS
 
     class Chosen(Table.Chosen):
         """The cursor moved to an entry, or the table went empty (``None``)."""
@@ -959,7 +1010,7 @@ class EntriesPane(Table):
             self.entry = entry
 
     def __init__(self, fmt: Formatter) -> None:
-        super().__init__("entries", "Trash", fmt)
+        super().__init__("entries", "Trash", fmt, sort_column="trashed_at")
         self._entries: list[TrashEntry] = []
         self._by_id: dict[str, TrashEntry] = {}
 
@@ -971,10 +1022,15 @@ class EntriesPane(Table):
         return self._by_id.get(self._selected)
 
     def show(self, entries: list[TrashEntry]) -> None:
-        """Replace the rows, in the order given. The cursor stays on its entry."""
+        """Replace the rows, in the order in effect. The cursor stays on its entry."""
         self._entries = list(entries)
         self._by_id = {entry.id: entry for entry in self._entries}
         self._rebuild()
+
+    def reorder(self) -> None:
+        """Put the rows back in the order in effect. The cursor holds its entry."""
+        if self._entries:
+            self._rebuild()
 
     def drop(self, entry_id: str) -> None:
         """Take one entry out of the table in place."""
@@ -1005,18 +1061,28 @@ class EntriesPane(Table):
         if self._entries and self._fit() != self._widths:
             self._rebuild()
 
+    def _held(self) -> list[TrashEntry]:
+        """Every entry the day choice lets through."""
+        return self._entries
+
     def _rows(self) -> list[TrashEntry]:
-        """The entries on view: the filter in effect, newest first."""
-        return [e for e in self._entries if self._matches(e.title)]
+        """The entries on view: the filter in effect, in the order in effect."""
+        kept = [e for e in self._entries if self._matches(e.title)]
+        return sorted(
+            kept,
+            key=entry_sort_key(self._sort_column),
+            reverse=self._sort_descending,
+        )
 
     def _fit(self) -> tuple[int, int]:
         """How wide the Title and Project columns can be with the room on hand."""
+        labels = self._labels()
         padding = 2 * self.cell_padding
         times = [len(self.fmt.list_timestamp(e.trashed_at)) for e in self._entries]
         sizes = [len(self.fmt.size(e.size)) for e in self._entries]
         fixed = (
-            max([len(ENTRY_COLUMNS["trashed_at"]), *times])
-            + max([len(ENTRY_COLUMNS["size"]), *sizes])
+            max([len(labels["trashed_at"]), *times])
+            + max([len(labels["size"]), *sizes])
             + 2 * padding
         )
         room = self.size.width - SCROLLBAR_WIDTH - fixed
@@ -1025,13 +1091,14 @@ class EntriesPane(Table):
     def _rebuild(self) -> None:
         """Put the rows back."""
         place = self._place()
+        labels = self._labels()
         self._widths = self._fit()
         title_width, project_width = self._widths
         self.clear(columns=True)
-        self.add_column(ENTRY_COLUMNS["title"], key="title", width=title_width)
-        self.add_column(ENTRY_COLUMNS["trashed_at"], key="trashed_at")
-        self.add_column(Text(ENTRY_COLUMNS["size"], justify="right"), key="size")
-        self.add_column(ENTRY_COLUMNS["project"], key="project", width=project_width)
+        self.add_column(labels["title"], key="title", width=title_width)
+        self.add_column(labels["trashed_at"], key="trashed_at")
+        self.add_column(Text(labels["size"], justify="right"), key="size")
+        self.add_column(labels["project"], key="project", width=project_width)
         for entry in self._rows():
             self.add_row(
                 Text(
@@ -1301,13 +1368,14 @@ def key_help() -> list[tuple[str, list[Binding]]]:
     The footer lists the keys of the row and of the tool, a pane frame the keys
     of the pane, and the title bar the keys of the views. This is the one place
     that names them all. A view names its own key in its title, the way the
-    title bar does, so no line of its own is needed for it.
+    title bar does, so no line of its own is needed for it. Both tables take
+    the sort keys, so they are named once, with the other shared keys.
     """
     by_key = {binding.key: binding for binding in SHARED_BINDINGS}
     slash, clear = FILTER_BINDINGS
     sessions_view, trash_view = TitleBar.VIEWS
     return [
-        (plain_keys([sessions_view]), [*SESSIONS_BINDINGS, *SORT_BINDINGS]),
+        (plain_keys([sessions_view]), list(SESSIONS_BINDINGS)),
         (plain_keys([trash_view]), list(ENTRIES_BINDINGS)),
         (
             "Every pane",
@@ -1315,6 +1383,7 @@ def key_help() -> list[tuple[str, list[Binding]]]:
                 INTO_LIST,
                 by_key["tab"],
                 WALK_PANES,
+                *SORT_BINDINGS,
                 slash,
                 clear,
                 by_key["r"],

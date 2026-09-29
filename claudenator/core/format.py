@@ -148,6 +148,10 @@ class Formatter:
             value /= 1024
         return f"{int(value)}B"
 
+    def details_size(self, size: int) -> str:
+        """Byte size for the details, which have room for both: ``2.1K (2,148 bytes)``."""
+        return f"{self.size(size)} ({self.count(size)} {plural_of('byte', size)})"
+
     def path(self, path: str, width: int) -> str:
         """A path in ``width`` columns. One too long is cut in the middle, at slashes.
 
@@ -234,7 +238,7 @@ class Formatter:
             ("Claude Code", session.version or "-"),
             (
                 "Transcript",
-                f"{self.size(session.transcript_size)}  {session.transcript_path.name}",
+                f"{self.details_size(session.transcript_size)}  {session.transcript_path.name}",
             ),
         ]
         if session.sidecar_path is not None:
@@ -243,19 +247,19 @@ class Formatter:
             lines.append(
                 (
                     "Sidecar",
-                    f"{self.size(session.sidecar_size)}  {session.sidecar_path.name}"
+                    f"{self.details_size(session.sidecar_size)}  {session.sidecar_path.name}"
                     f"  ({agents} {noun})",
                 )
             )
         else:
             lines.append(("Sidecar", "none"))
-        lines.append(("Total", self.size(session.size)))
+        lines.append(("Total", self.details_size(session.size)))
         if session.is_fork:
             lines.append(("Fork of", session.fork_parent or "-"))
             lines.append(
                 (
                     "Inherited",
-                    f"{self.size(details.inherited_bytes)} came from the parent",
+                    f"{self.details_size(details.inherited_bytes)} came from the parent",
                 )
             )
         lines.append(("Live", f"yes  (pid {session.pid})" if session.live else "no"))
@@ -277,7 +281,7 @@ class Formatter:
             ("Project", session.project_path),
             ("Git branch", session.git_branch or "-"),
             ("Last used", self.details_timestamp(session.last_used)),
-            ("Total", self.size(session.size)),
+            ("Total", self.details_size(session.size)),
         ]
 
     def stale(self, text: str, figures: Figures) -> str:
@@ -350,16 +354,38 @@ class Formatter:
         """What a run of deep scans did: ``2 scanned, 1 already fresh, 0 failed``."""
         return f"{read} scanned, {kept} already fresh, {failed} failed"
 
-    def counted(self, name: str, count: int) -> str:
-        """A pane title with the count of what it shows: ``Projects (3)``, or ``(empty)``."""
+    def counted(self, name: str, count: int, of: int | None = None) -> str:
+        """A pane title with the count of what it shows: ``Projects (3)``, or ``(empty)``.
+
+        While a filter narrows the list, ``of`` counts the whole of it:
+        ``Projects (2 of 12)``.
+        """
+        if of:
+            return f"{name} ({count} of {of})"
         return f"{name} ({count})" if count else f"{name} (empty)"
 
-    def summary(self, name: str, noun: str, sizes: Sequence[int]) -> str:
+    def summary(
+        self,
+        name: str,
+        noun: str,
+        sizes: Sequence[int],
+        of: Sequence[int] | None = None,
+    ) -> str:
         """A pane title with a count and a total: ``Trash (3 entries, 12.3M total)``.
 
         ``noun`` names one of the things, ``session`` or ``entry``. Its plural
         follows English. One size per thing on view; none gives ``(empty)``.
+        While a filter narrows the list, ``of`` holds one size per thing in the
+        whole of it: ``Trash (2 of 9 entries, 12.3M of 48.0M total)``, and
+        ``Trash (0 of 9 entries)`` when nothing matches.
         """
+        if of:
+            word = noun if len(of) == 1 else plural(noun)
+            counts = f"{len(sizes)} of {len(of)} {word}"
+            if not sizes:
+                return f"{name} ({counts})"
+            total = f"{self.size(sum(sizes))} of {self.size(sum(of))} total"
+            return f"{name} ({counts}, {total})"
         if not sizes:
             return f"{name} (empty)"
         count = len(sizes)
@@ -377,12 +403,12 @@ class Formatter:
             ("Title", entry.title),
             ("Project", entry.project_path),
             ("Trashed", self.details_timestamp(entry.trashed_at)),
-            ("Size", self.size(entry.size)),
+            ("Size", self.details_size(entry.size)),
             ("Entry", str(entry.path)),
         ]
         for part in entry.parts:
             label = part.kind.capitalize()
-            lines.append((label, f"{self.size(part.size)}  {part.original}"))
+            lines.append((label, f"{self.details_size(part.size)}  {part.original}"))
         return lines
 
     def describe_entry_short(self, entry: TrashEntry) -> list[tuple[str, str]]:
@@ -392,5 +418,5 @@ class Formatter:
             ("Title", entry.title),
             ("Project", entry.project_path),
             ("Trashed", self.details_timestamp(entry.trashed_at)),
-            ("Size", self.size(entry.size)),
+            ("Size", self.details_size(entry.size)),
         ]

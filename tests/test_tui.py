@@ -45,6 +45,7 @@ from claudenator.core.cache import Cache
 from claudenator.core.config import (
     OPTIONS,
     SORT_COLUMNS,
+    TRASH_SORT_COLUMNS,
     apply_file,
     default_of,
     groups,
@@ -52,6 +53,7 @@ from claudenator.core.config import (
 from claudenator.core.format import Formatter
 from claudenator.core.model import Figures, TrashEntry
 from claudenator.core.settings import Settings
+from claudenator.core.state import State, write_state
 from claudenator.core.store import SessionStore
 from claudenator.core.trash import trash_session
 from claudenator.tui.about import QR_BORDER, QR_ERROR, AboutScreen
@@ -63,6 +65,7 @@ from claudenator.tui.panes import (
     COLUMNS,
     DaysPane,
     DetailsPane,
+    ENTRY_COLUMNS,
     EntriesPane,
     EntryPane,
     FilterBox,
@@ -91,6 +94,9 @@ from tests.fabricate import (
 )
 
 WIDE = (140, 40)
+
+# Currently selected project and session
+Pick = tuple[str | None, str | None, list[str]]
 
 # Every pane that carries a frame, in both views.
 PANES = (
@@ -915,7 +921,9 @@ async def test_the_details_pane_shows_the_vital_lines_of_the_session_under_the_c
     assert re.search(r"^Git branch: +dev$", text, re.M)
     used = re.escape(fmt.details_timestamp(session.last_used))
     assert re.search(rf"^Last used: +{used}$", text, re.M)
-    assert re.search(rf"^Total: +{fmt.size(session.size)}$", text, re.M)
+    assert re.search(
+        rf"^Total: +{re.escape(fmt.details_size(session.size))}$", text, re.M
+    )
     hidden = ("Folder", "Transcript", "Sidecar", "Created", "Claude Code", "Live")
     assert not [label for label in hidden if f"{label}:" in text]
 
@@ -969,7 +977,8 @@ async def test_the_details_of_a_fork_name_the_parent_and_the_inherited_bytes(
     assert "Fork of:" not in pane
     assert f"Fork of:     {parent}" in text
     assert (
-        f"Inherited:   {fmt.size(details.inherited_bytes)} came from the parent" in text
+        f"Inherited:   {fmt.details_size(details.inherited_bytes)} came from the parent"
+        in text
     )
 
 
@@ -1093,6 +1102,114 @@ async def test_the_pane_that_starts_with_the_focus_comes_from_the_settings(
 
     assert seen == [ProjectsPane, SessionsPane, SessionsPane]
     assert Settings().start_pane == "sessions"
+
+
+def picked(app: ClaudenatorApp) -> Pick:
+    """What the panes hold: the project, the session, and the rows on view."""
+    table = app.screen.query_one(SessionsPane)
+    return (
+        app.screen.query_one(ProjectsPane).selected_path,
+        table.selected_id,
+        rows(table),
+    )
+
+
+async def one_run(
+    settings: Settings,
+    projects: tuple[str, ...] = (),
+    sessions: tuple[str, ...] = (),
+) -> tuple[Pick, Pick]:
+    """One run, start to quit: what the panes held at start, and after these keys."""
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        opened = picked(app)
+        for pane, keys in ((ProjectsPane, projects), (SessionsPane, sessions)):
+            if keys:
+                app.screen.query_one(pane).focus()
+                await pilot.press(*keys)
+                await pilot.pause()
+        return opened, picked(app)
+
+
+async def test_the_next_start_puts_the_highlight_back_on_the_project_and_the_session(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A quit on a project and a session: the next start holds both again."""
+    a1, a2, _b1 = three_sessions(fake)
+    _, left = await one_run(settings, projects=("down",), sessions=("down",))
+    opened, _ = await one_run(settings)
+
+    assert left == ("/p/a", a2, [a1, a2])
+    assert opened == ("/p/a", a2, [a1, a2])
+    assert settings.state_file.is_file()
+
+
+async def test_a_quit_on_all_projects_starts_on_all_projects(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The 'All projects' line is a choice too, and a later run writes the file again."""
+    a1, a2, b1 = three_sessions(fake)
+    await one_run(settings, projects=("down",))
+    _, left = await one_run(settings, projects=("up",))
+    opened, _ = await one_run(settings)
+
+    assert left == (None, a1, [a1, a2, b1])
+    assert opened == (None, a1, [a1, a2, b1])
+
+
+async def test_a_project_that_is_gone_falls_back_to_all_projects(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A project with no session left leaves the highlight on 'All projects'."""
+    a1, a2, b1 = three_sessions(fake)
+    write_state(settings.state_file, State("/p/gone", b1))
+    opened, _ = await one_run(settings)
+
+    assert opened == (None, b1, [a1, a2, b1])
+
+
+async def test_a_session_that_is_gone_falls_back_to_the_first_row(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A session that is not listed any more leaves the cursor on the first row."""
+    a1, a2, _b1 = three_sessions(fake)
+    write_state(settings.state_file, State("/p/a", "no-such-session"))
+    opened, _ = await one_run(settings)
+
+    assert opened == ("/p/a", a1, [a1, a2])
+
+
+async def test_remember_selection_off_writes_nothing_and_reads_nothing(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """With the switch off the file is left alone, and a start pays it no mind."""
+    a1, a2, b1 = three_sessions(fake)
+    settings.remember_selection = False
+    write_state(settings.state_file, State("/p/a", a2))
+    before = settings.state_file.read_bytes()
+    opened, left = await one_run(settings, projects=("down",), sessions=("down",))
+
+    assert opened == (None, a1, [a1, a2, b1])
+    assert left == ("/p/a", a2, [a1, a2])
+    assert settings.state_file.read_bytes() == before
+
+
+async def test_a_broken_state_file_starts_the_tool_with_no_warning(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A file that is not TOML at all opens the tool as a missing one does."""
+    a1, a2, b1 = three_sessions(fake)
+    settings.state_file.parent.mkdir(parents=True, exist_ok=True)
+    settings.state_file.write_text("last_project = ", encoding="utf-8")
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        opened = picked(app)
+        said = toasts(app)
+
+    assert opened == (None, a1, [a1, a2, b1])
+    assert said == []
 
 
 async def test_the_arrows_walk_the_panes_the_way_tab_does(
@@ -1464,7 +1581,7 @@ async def test_every_pane_lifts_its_background_when_it_takes_the_focus(
     assert [name for name, gap in moved.items() if gap < FOCUS_GAP] == []
 
 
-def state(table: SessionsPane) -> tuple[list[str], str | None, tuple[str, bool]]:
+def state(table: Table) -> tuple[list[str], str | None, tuple[str, bool]]:
     """The rows, the selected id and the sort order, in one tuple."""
     return rows(table), table.selected_id, table.sorting
 
@@ -1567,6 +1684,8 @@ async def test_the_rows_start_at_last_used_newest_first_as_the_settings_say(
 ) -> None:
     """The rows start at last used, newest first, as the settings say."""
     a1, a2, b1 = sized_sessions(fake)
+    # The second run opens on the first row, not on the one the first run left.
+    settings.remember_selection = False
     app = ClaudenatorApp(settings)
     async with app.run_test(size=WIDE) as pilot:
         await pilot.pause()
@@ -1664,6 +1783,245 @@ async def test_a_click_on_a_header_orders_by_that_column_and_again_turns_it_roun
 
     assert once == ([b1, a1, a2], a2, ("title", False))
     assert twice == ([a2, a1, b1], a2, ("title", True))
+
+
+def sortable_trash(fake: FakeClaude, settings: Settings) -> tuple[str, str, str]:
+    """Three Trash entries that every column orders apart: ``mid``, ``Zed``, ``alpha``.
+
+    Newest first as named, the last a day before the other two. ``Zed`` is the
+    biggest and ``alpha`` the smallest. The case of the titles and of the
+    projects differs, so an order that minds the case comes out wrong.
+    """
+    made = (("mid", "/p/c", 5_000), ("Zed", "/p/a", 50_000), ("alpha", "/p/B", 0))
+    sids = []
+    for title, project, extra in made:
+        sid = new_id()
+        fake.transcript(project, sid, session_records(sid, project, custom_title=title))
+        if extra:
+            fake.sidecar(project, sid, bytes_each=extra)
+        sids.append(sid)
+    store = SessionStore(settings)
+    later = datetime(2026, 9, 14, 12, 0, 0, tzinfo=timezone.utc)
+    moments = (later, later - timedelta(minutes=5), later - timedelta(days=1))
+    mid, zed, alpha = (
+        trash_session(settings, store.find_session(sid), now=moment).id
+        for sid, moment in zip(sids, moments)
+    )
+    return mid, zed, alpha
+
+
+async def test_o_orders_the_trash_by_the_next_column_and_the_cursor_stays_on_its_entry(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash opens newest first. 'o'/'O' walks its four columns."""
+    mid, zed, alpha = sortable_trash(fake, settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        await pilot.press("down")
+        await pilot.pause()
+        keys = frame_keys(app)
+        seen = [state(table)]
+        marked = [columns(table)]
+        for key in ("o", "O", "o", "o", "o"):
+            await pilot.press(key)
+            await pilot.pause()
+            seen.append(state(table))
+            marked.append(columns(table))
+
+    assert keys == "r Reload  o Sort  O Reverse  / Filter"
+    assert seen == [
+        ([mid, zed, alpha], zed, ("trashed_at", True)),
+        ([zed, mid, alpha], zed, ("size", True)),
+        ([alpha, mid, zed], zed, ("size", False)),
+        ([zed, alpha, mid], zed, ("project", False)),
+        ([alpha, mid, zed], zed, ("title", False)),
+        ([mid, zed, alpha], zed, ("trashed_at", True)),
+    ]
+    assert marked[0] == ["Title", "Trashed ▼", "Size", "Project"]
+    assert marked[2] == ["Title", "Trashed", "Size ▲", "Project"]
+
+
+async def test_a_click_on_a_trash_header_orders_by_that_column_and_again_turns_it_round(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """A click on a Trash header orders by that column."""
+    mid, zed, alpha = sortable_trash(fake, settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        await pilot.press("down")
+        await pilot.pause()
+        # The border and the padding come first, so x 3 is on the Title header.
+        await pilot.click(EntriesPane, offset=(3, 1))
+        await pilot.pause()
+        once = state(table)
+        await pilot.click(EntriesPane, offset=(3, 1))
+        await pilot.pause()
+        twice = state(table)
+
+    assert once == ([alpha, mid, zed], zed, ("title", False))
+    assert twice == ([zed, mid, alpha], zed, ("title", True))
+
+
+async def test_the_trash_order_moves_the_rows_and_never_changes_which_are_on_view(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The filter and the day in effect hold through a new order."""
+    mid, zed, alpha = sortable_trash(fake, settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        await pilot.press("slash", "d", "enter")
+        await pilot.pause()
+        await pilot.press("o")
+        await pilot.pause()
+        filtered = rows(table)
+        await pilot.press("escape")
+        await pilot.pause()
+        cleared = rows(table)
+        await pilot.press("shift+tab", "down", "tab")
+        await pilot.pause()
+        one_day = rows(table)
+        await pilot.press("O")
+        await pilot.pause()
+        turned = rows(table)
+
+    assert filtered == [zed, mid]
+    assert cleared == [zed, mid, alpha]
+    assert one_day == [zed, mid]
+    assert turned == [mid, zed]
+
+
+async def test_the_trash_opens_in_the_order_the_settings_name(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The settings name the order the Trash opens in."""
+    mid, zed, alpha = sortable_trash(fake, settings)
+    settings.trash_sort_column = "size"
+    settings.trash_sort_descending = False
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        opened = rows(table), columns(table)
+        await pilot.press("f2")
+        await pilot.pause()
+        option_row(app, "trash_sort_column").query_one(Select).value = "trashed_at"
+        await pilot.pause()
+        changed = rows(table), table.sorting
+
+    assert opened == ([alpha, mid, zed], ["Title", "Trashed", "Size ▲", "Project"])
+    assert changed == ([alpha, zed, mid], ("trashed_at", False))
+
+
+async def test_a_filter_in_effect_shows_in_the_title_of_the_projects_and_the_sessions(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """While a filter narrows a list, its title counts what is on view and the whole."""
+    a1, a2, b1 = three_sessions(fake)
+    size = {s.id: s.size for s in SessionStore(settings).list_sessions()}
+    fmt = Formatter(settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        table = app.screen.query_one(SessionsPane)
+        projects = app.screen.query_one(ProjectsPane)
+        seen = [str(table.border_title)]
+        await pilot.press("slash", "a", "enter")
+        await pilot.pause()
+        seen.append(str(table.border_title))
+        await pilot.press("escape")
+        await pilot.pause()
+        seen.append(str(table.border_title))
+        await pilot.press("shift+tab")
+        await pilot.pause()
+        seen.append(str(projects.border_title))
+        for typed in ("b", "p"):
+            await pilot.press("slash", typed, "enter")
+            await pilot.pause()
+            seen.append(str(projects.border_title))
+        await pilot.press("escape")
+        await pilot.pause()
+        seen.append(str(projects.border_title))
+
+    every = fmt.size(size[a1] + size[a2] + size[b1])
+    shown = fmt.size(size[a1] + size[a2])
+    assert seen == [
+        f"Sessions (3 sessions, {every} total)",
+        f"Sessions (2 of 3 sessions, {shown} of {every} total)",
+        f"Sessions (3 sessions, {every} total)",
+        "Projects (2)",
+        "Projects (1 of 2)",
+        "Projects (2 of 2)",
+        "Projects (2)",
+    ]
+
+
+async def test_a_filter_in_effect_shows_in_the_title_of_the_trash(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """The Trash title counts the whole Trash too, and drops the size when none match."""
+    e_a1, e_a2, e_b1 = two_days_of_trash(fake, settings)
+    fmt = Formatter(settings)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=WIDE) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        table = app.screen.query_one(EntriesPane)
+        seen = [str(table.border_title)]
+        for typed in ("a", "zzz"):
+            await pilot.press("slash", *typed, "enter")
+            await pilot.pause()
+            seen.append(str(table.border_title))
+            await pilot.press("escape")
+            await pilot.pause()
+        seen.append(str(table.border_title))
+
+    every = fmt.size(e_a1.size + e_a2.size + e_b1.size)
+    shown = fmt.size(e_a1.size + e_a2.size)
+    assert seen == [
+        f"Trash (3 entries, {every} total)",
+        f"Trash (2 of 3 entries, {shown} of {every} total)",
+        "Trash (0 of 3 entries)",
+        f"Trash (3 entries, {every} total)",
+    ]
+
+
+async def test_a_long_filter_title_keeps_the_frame_whole_in_a_narrow_window(
+    fake: FakeClaude, settings: Settings
+) -> None:
+    """In the narrowest window the longer title is cut, and both corners stay."""
+    three_sessions(fake)
+    app = ClaudenatorApp(settings)
+    async with app.run_test(size=(settings.min_width, settings.min_height)) as pilot:
+        await pilot.pause()
+        await pilot.press("slash", "a", "enter")
+        await pilot.pause()
+        title = str(app.screen.query_one(SessionsPane).border_title)
+        strips = app.screen._compositor.render_strips()
+        tops = []
+        for kind in (ProjectsPane, SessionsPane):
+            box = app.screen.query_one(kind).region
+            left, right = box.x, box.right
+            tops.append(strips[box.y].text[left:right])
+
+    assert title.startswith("Sessions (2 of 3 sessions, ")
+    for top in tops:
+        assert top.startswith("╭") and top.endswith("╮"), top
+        assert len(top) == settings.min_width
 
 
 async def test_slash_opens_a_box_that_narrows_the_sessions_as_you_type(
@@ -2049,7 +2407,7 @@ async def test_t_switches_the_panes_to_the_trash_and_back_again(
         [("s Sessions", False), ("t Trash (1)", True)],
         [ALL_DAYS, fmt.day(entry.trashed_at)],
         ([entry.id], entry.id, 0),
-        ["Title", "Trashed", "Size", "Project"],
+        ["Title", "Trashed ▼", "Size", "Project"],
     )
     assert (header.y, header.height) == (0, 1)
     assert left.x == 0
@@ -2168,14 +2526,16 @@ async def test_the_entry_pane_shows_the_vital_lines_of_the_entry_under_the_curso
     assert re.search(r"^Project: +/p/x$", first, re.M)
     stamp = re.escape(fmt.details_timestamp(later))
     assert re.search(rf"^Trashed: +{stamp}$", first, re.M)
-    assert re.search(rf"^Size: +{re.escape(fmt.size(entry.size))}$", first, re.M)
+    assert re.search(
+        rf"^Size: +{re.escape(fmt.details_size(entry.size))}$", first, re.M
+    )
     hidden = ("Entry", "Transcript", "Sidecar", "Session-env", "Todo")
     assert not [label for label in hidden if f"{label}:" in first]
     # The full view keeps every line the pane leaves out.
     assert re.search(rf"^Entry: +\S*/{re.escape(entry.id)}$", full, re.M)
     for kind in ("transcript", "sidecar", "session-env", "file-history", "todo"):
         name = re.escape(parts[kind].name)
-        line = rf"^{kind.capitalize()}: +(\S+  )?\S*/{name}$"
+        line = rf"^{kind.capitalize()}: +(\S+ \([\d,]+ bytes?\)  )?\S*/{name}$"
         assert re.search(line, full, re.M), kind
     assert re.search(rf"^Session: +{other}$", second, re.M)
     assert sid not in second
@@ -2633,13 +2993,15 @@ async def test_the_pane_titles_follow_the_project_in_view_and_the_filter(
         "Projects (2)",
         f"Sessions (1 session, {fmt.size(size[b1])} total)",
     )
+    in_a = fmt.size(size[a1] + size[a2])
     assert projects_narrowed == (
-        "Projects (1)",
-        f"Sessions (2 sessions, {fmt.size(size[a1] + size[a2])} total)",
+        "Projects (1 of 2)",
+        f"Sessions (2 sessions, {in_a} total)",
     )
+    # The whole list is what the project choice lets through, not every session.
     assert sessions_narrowed == (
-        "Projects (1)",
-        f"Sessions (1 session, {fmt.size(size[a1])} total)",
+        "Projects (1 of 2)",
+        f"Sessions (1 of 2 sessions, {fmt.size(size[a1])} of {in_a} total)",
     )
 
 
@@ -3661,6 +4023,11 @@ def test_the_sort_columns_are_the_columns_of_the_sessions_table() -> None:
     assert tuple(COLUMNS) == SORT_COLUMNS
 
 
+def test_the_trash_sort_columns_are_the_columns_of_the_trash_table() -> None:
+    """All Trash columns are sortable by."""
+    assert tuple(ENTRY_COLUMNS) == TRASH_SORT_COLUMNS
+
+
 async def test_the_f2_key_opens_the_settings_box_and_the_footer_lists_it(
     fake: FakeClaude, settings: Settings
 ) -> None:
@@ -3682,7 +4049,7 @@ async def test_the_f2_key_opens_the_settings_box_and_the_footer_lists_it(
     assert key == "Settings"
     assert opened is SettingsScreen
     assert tabs == [slug(group) for group in groups()]
-    assert rows[:3] == ["theme", "start_pane", "sort_column"]
+    assert rows[:3] == ["theme", "start_pane", "remember_selection"]
     assert rows[-2:] == ["confirm_delete", "confirm_purge"]
     assert len(rows) == len(OPTIONS)
     assert closed is MainScreen
@@ -3990,8 +4357,8 @@ async def test_tab_moves_from_one_option_to_the_next(
     assert seen == [
         ("Select", None),
         ("Select", None),
+        ("Switch", None),
         ("Button", "reset-all"),
-        ("Button", "save"),
     ]
 
 

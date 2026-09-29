@@ -150,6 +150,17 @@ def test_size() -> None:
     assert size(5 * 1024**4) == "5.0T"
 
 
+def test_details_size_adds_the_exact_bytes_to_the_short_form() -> None:
+    """The details show both forms. The bytes take the separator every count takes."""
+    details_size = Formatter(Settings()).details_size
+
+    assert details_size(0) == "0B (0 bytes)"
+    assert details_size(1) == "1B (1 byte)"
+    assert details_size(1023) == "1023B (1,023 bytes)"
+    assert details_size(1024) == "1.0K (1,024 bytes)"
+    assert details_size(1_234_567) == "1.2M (1,234,567 bytes)"
+
+
 def test_day_is_the_local_calendar_day_in_the_pattern_the_settings_give() -> None:
     """Day is the local calendar day, in the pattern the settings give. Never a time."""
     day = Formatter(Settings(), now=NOW).day(NOW)
@@ -311,11 +322,11 @@ def test_describe_names_the_folder_once_and_the_files_in_it_by_their_name() -> N
     without = dict(fmt.describe(SessionDetails(alone, 0)))
 
     assert lines["Folder"] == "/c/projects/-home-u-p"
-    assert lines["Transcript"] == "100B  s.jsonl"
-    assert lines["Sidecar"] == "2.0K  s  (3 subagent transcripts)"
-    assert lines["Total"] == "2.1K"
+    assert lines["Transcript"] == "100B (100 bytes)  s.jsonl"
+    assert lines["Sidecar"] == "2.0K (2,048 bytes)  s  (3 subagent transcripts)"
+    assert lines["Total"] == "2.1K (2,148 bytes)"
     assert without["Sidecar"] == "none"
-    assert without["Total"] == "100B"
+    assert without["Total"] == "100B (100 bytes)"
 
 
 def figures(**overrides: Any) -> Figures:
@@ -413,7 +424,7 @@ def test_describe_short_names_the_six_lines_of_the_pane_and_no_other() -> None:
         ("Project", "/home/u/p"),
         ("Git branch", "dev"),
         ("Last used", f"{fmt.absolute(NOW)} (just now)"),
-        ("Total", "2.1K"),
+        ("Total", "2.1K (2,148 bytes)"),
     ]
     assert scanned == lines
 
@@ -457,7 +468,7 @@ def test_describe_short_of_a_damaged_session_still_reads_as_a_session() -> None:
     assert lines["Id"] == "s"
     assert lines["Title"] == "s"
     assert lines["Git branch"] == "-"
-    assert lines["Total"] == "2.1K"
+    assert lines["Total"] == "2.1K (2,148 bytes)"
 
 
 def test_figures_line_says_the_headline_numbers_in_one_line() -> None:
@@ -559,6 +570,35 @@ def test_a_summary_title_counts_the_things_and_sums_their_size() -> None:
     )
 
 
+def test_a_counted_title_counts_the_whole_list_while_a_filter_narrows_it() -> None:
+    """With the whole list named, the title gives both counts, even when all match."""
+    counted = Formatter(Settings()).counted
+
+    assert counted("Projects", 2, of=12) == "Projects (2 of 12)"
+    assert counted("Projects", 12, of=12) == "Projects (12 of 12)"
+    assert counted("Projects", 0, of=12) == "Projects (0 of 12)"
+    assert counted("Projects", 0, of=0) == "Projects (empty)"
+
+
+def test_a_summary_title_counts_and_sums_the_whole_list_while_a_filter_narrows_it() -> (
+    None
+):
+    """With the whole list named, the title gives both counts and both sizes."""
+    summary = Formatter(Settings()).summary
+
+    assert (
+        summary("Trash", "entry", [1000], of=[1000, 2048])
+        == "Trash (1 of 2 entries, 1000B of 3.0K total)"
+    )
+    assert (
+        summary("Trash", "entry", [1000], of=[1000])
+        == "Trash (1 of 1 entry, 1000B of 1000B total)"
+    )
+    # Nothing matches.
+    assert summary("Trash", "entry", [], of=[1000, 2048]) == "Trash (0 of 2 entries)"
+    assert summary("Trash", "entry", [], of=[]) == "Trash (empty)"
+
+
 def test_trash_key_carries_the_count_and_nothing_when_the_trash_is_empty() -> None:
     """The Trash key carries the count. An empty Trash puts nothing after the word."""
     key = Formatter(Settings()).trash_key
@@ -584,11 +624,11 @@ def test_describe_entry_names_the_session_the_moment_the_size_and_every_part() -
         ("Project", "/home/u/p"),
         # The details hold both forms, whatever a column shows.
         ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
-        ("Size", "2.1K"),
+        ("Size", "2.1K (2,152 bytes)"),
         ("Entry", "/t/2026-09-14T12-00-00_s"),
-        ("Transcript", "100B  /c/projects/p/s.jsonl"),
-        ("Sidecar", "2.0K  /c/projects/p/s"),
-        ("Session-env", "4B  /c/session-env/s"),
+        ("Transcript", "100B (100 bytes)  /c/projects/p/s.jsonl"),
+        ("Sidecar", "2.0K (2,048 bytes)  /c/projects/p/s"),
+        ("Session-env", "4B (4 bytes)  /c/session-env/s"),
     ]
 
 
@@ -608,7 +648,7 @@ def test_describe_entry_short_names_the_five_lines_of_the_pane_and_no_other() ->
         ("Title", "Hello"),
         ("Project", "/home/u/p"),
         ("Trashed", f"{fmt.absolute(NOW)} (just now)"),
-        ("Size", "2.1K"),
+        ("Size", "2.1K (2,152 bytes)"),
     ]
 
 

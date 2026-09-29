@@ -57,8 +57,13 @@ class Settings:
     # projects pane opens on ``All projects``, so every session is listed until
     # the user asks for less. Any other name gives the sessions pane.
     start_pane: str = "sessions"
+    # Put the highlight back on the project and the session of the last run.
+    remember_selection: bool = True
     sort_column: str = "last_used"
     sort_descending: bool = True
+    # The same, for the Trash table.
+    trash_sort_column: str = "trashed_at"
+    trash_sort_descending: bool = True
     # The projects pane takes this share of the width, side by side with the
     # other panes, or this share of the height when they go in one column.
     projects_pane_share: float = 0.25
@@ -185,3 +190,8 @@ class Settings:
     def cache_file(self) -> Path:
         """The SQLite cache of costly numbers."""
         return self.data_dir / "cache.db"
+
+    @property
+    def state_file(self) -> Path:
+        """What the last run had highlighted."""
+        return self.data_dir / "state.toml"
