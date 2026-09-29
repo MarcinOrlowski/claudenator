@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v1.2.0 (TBD)
+## v1.2.0 (2026-09-29)
 
 * App now remembers last selected project and session from last run.
 * The Trash list can now be ordered by any column, the way the sessions list is.
